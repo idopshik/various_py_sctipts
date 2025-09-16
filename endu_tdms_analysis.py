@@ -499,10 +499,6 @@ class Endurance_tdms_logs_dealer:
             tdms_file = TdmsFile.read(file_path)
             df = tdms_file.as_dataframe()
 
-            # Поиск колонок с Motor Current и ECU Current
-            motor_current_cols = [col for col in df.columns if 'motor current' in col.lower()]
-            ecu_current_cols = [col for col in df.columns if 'ecu current' in col.lower()]
-
             # Поиск временной колонки
             time_cols = [col for col in df.columns if 'time' in col.lower()]
             time_col = time_cols[0] if time_cols else None
@@ -511,42 +507,59 @@ class Endurance_tdms_logs_dealer:
                 print("Временная колонка не найдена!")
                 return False
 
+            # Поиск колонок с Motor Current и ECU Current
+            motor_current_cols = [col for col in df.columns if 'motor current' in col.lower()]
+            ecu_current_cols = [col for col in df.columns if 'ecu current' in col.lower()]
+
             if not motor_current_cols and not ecu_current_cols:
                 print("Колонки Motor Current и ECU Current не найдены!")
                 return False
 
-            # Расчет энергии
-            voltage = 12.0
+            # Поиск колонки с напряжением
+            voltage_cols = [col for col in df.columns if 'voltage' in col.lower() and 'current' not in col.lower()]
+            if voltage_cols:
+                # Берем среднее значение напряжения
+                voltage = df[voltage_cols[0]].mean()
+                print(f"Напряжение из данных: {voltage:.2f} V")
+            else:
+                # Напряжение по умолчанию, если не найдено
+                voltage = 12.0
+                print("Колонка напряжения не найдена, используется 12.0 V по умолчанию")
+
+            # Упрощаем названия колонок для отображения
             energy_results = {}
-            plot_data = {}  # Будем хранить данные для графиков
+            plot_data = {}  # Сохраняем данные для графиков
 
             # Обрабатываем Motor Current
             if motor_current_cols:
                 for current_col in motor_current_cols:
                     energy_joules, time_data, current_data, power_data, cumulative_energy = self.calculate_energy_joules(df, time_col, current_col, voltage)
-                    energy_results[f"Motor Current ({current_col})"] = energy_joules
+                    # Используем упрощенное имя
+                    energy_results["Motor Current"] = energy_joules
                     plot_data[f"Motor_{current_col}"] = (time_data, current_data, power_data, cumulative_energy)
-                    print(f"Затраченная энергия для {current_col}: {energy_joules:.0f} Дж ({energy_joules/1000:.1f} кДж)")
+                    print(f"Затраченная энергия для Motor Current: {energy_joules:,.4f} Дж")
 
             # Обрабатываем ECU Current
             if ecu_current_cols:
                 for current_col in ecu_current_cols:
                     energy_joules, time_data, current_data, power_data, cumulative_energy = self.calculate_energy_joules(df, time_col, current_col, voltage)
-                    energy_results[f"ECU Current ({current_col})"] = energy_joules
+                    # Используем упрощенное имя
+                    energy_results["ECU Current"] = energy_joules
                     plot_data[f"ECU_{current_col}"] = (time_data, current_data, power_data, cumulative_energy)
-                    print(f"Затраченная энергия для {current_col}: {energy_joules:.0f} Дж ({energy_joules/1000:.1f} кДж)")
+                    print(f"Затраченная энергия для ECU Current: {energy_joules:,.4f} Дж")
 
-            # Сохраняем данные для построения графиков в главном потоке
+            # Сохраняем данные
             self.plot_data = plot_data
             self.energy_results = energy_results
             self.current_file_name = os.path.basename(file_path)
-            self.df = df  # Сохраняем DataFrame
-            self.time_col = time_col  # Сохраняем временную колонку
+            self.df = df
+            self.time_col = time_col
+            self.voltage = voltage  # Сохраняем напряжение для использования в графиках
 
-            # Запускаем построение графиков в главном потоке
+            # Запускаем построение графиков
             gui_instance.root.after(100, self.create_plots_in_main_thread)
 
-            print(f"Проверка файла {os.path.basename(file_path)} завершена")
+            print(f"Проверка файла завершена")
             return True
 
         except Exception as e:
@@ -565,7 +578,7 @@ class Endurance_tdms_logs_dealer:
             if not hasattr(self, 'plot_data') or not self.plot_data:
                 return
 
-            # Создаем график с новым layout: верхний - токи, нижний - накопленная энергия
+            # Создаем график с новым layout
             fig = plt.figure(figsize=(16, 10))
             gs = fig.add_gridspec(2, 2, width_ratios=[3, 1], height_ratios=[1, 1])
 
@@ -575,19 +588,31 @@ class Endurance_tdms_logs_dealer:
 
             fig.suptitle(f'Energy Analysis: {self.current_file_name}', fontsize=16, fontweight='bold')
 
-            # Строим графики токов
-            current_cols = []  # Собираем имена колонок токов
+            # Строим графики токов с упрощенными названиями
+            current_cols = []  # Собираем оригинальные имена колонок токов
+            energy_values = {}  # Сохраняем значения энергии для таблички
+            current_data_dict = {}  # Сохраняем данные токов для статистики
+
             for key, (time_data, current_data, power_data, cumulative_energy) in self.plot_data.items():
                 if key.startswith('Motor_'):
                     col_name = key.replace('Motor_', '')
-                    ax1.plot(time_data, current_data, label=col_name, linewidth=2, color='red')
+                    # Упрощаем название для легенды
+                    simple_name = 'Motor Current'
+                    ax1.plot(time_data, current_data, label=simple_name, linewidth=2, color='red')
                     current_cols.append(col_name)
+                    energy_values['Motor'] = self.energy_results.get("Motor Current", 0)
+                    current_data_dict['Motor'] = current_data
+
                 elif key.startswith('ECU_'):
                     col_name = key.replace('ECU_', '')
-                    ax1.plot(time_data, current_data, label=col_name, linewidth=2, linestyle='--', color='blue')
+                    # Упрощаем название для легенды
+                    simple_name = 'ECU Current'
+                    ax1.plot(time_data, current_data, label=simple_name, linewidth=2, linestyle='--', color='blue')
                     current_cols.append(col_name)
+                    energy_values['ECU'] = self.energy_results.get("ECU Current", 0)
+                    current_data_dict['ECU'] = current_data
 
-            # Настройка первого графика (токи) - масштаб 30А (но используем CURRENT_SCALE)
+            # Настройка первого графика (токи)
             ax1.set_xlabel('Time (s)')
             ax1.set_ylabel('Current (A)')
             ax1.set_title('Current Signals')
@@ -598,11 +623,9 @@ class Endurance_tdms_logs_dealer:
             # Строим графики накопленной энергии
             for key, (time_data, current_data, power_data, cumulative_energy) in self.plot_data.items():
                 if key.startswith('Motor_'):
-                    col_name = key.replace('Motor_', '')
-                    ax2.plot(time_data, cumulative_energy, label=f'Cum. Energy {col_name}', color='red', linewidth=2)
+                    ax2.plot(time_data, cumulative_energy, label='Cum. Energy Motor', color='red', linewidth=2)
                 elif key.startswith('ECU_'):
-                    col_name = key.replace('ECU_', '')
-                    ax2.plot(time_data, cumulative_energy, label=f'Cum. Energy {col_name}', color='blue', linewidth=2, linestyle='--')
+                    ax2.plot(time_data, cumulative_energy, label='Cum. Energy ECU', color='blue', linewidth=2, linestyle='--')
 
             ax2.set_xlabel('Time (s)')
             ax2.set_ylabel('Cumulative Energy (J)')
@@ -610,8 +633,22 @@ class Endurance_tdms_logs_dealer:
             ax2.legend()
             ax2.grid(True, alpha=0.3)
 
-            # Добавляем информационную таблицу с ВСЕМИ необходимыми аргументами
-            self.add_info_table(ax_table, self.energy_results, self.df, self.time_col, current_cols)
+            # Добавляем информационную табличку на график (поднимем выше)
+            if energy_values:
+                motor_energy = energy_values.get('Motor', 0)
+                ecu_energy = energy_values.get('ECU', 0)
+
+                # Создаем текстовую табличку
+                textstr = f'Motor: {motor_energy:,.4f} J\nECU: {ecu_energy:,.4f} J'
+
+                # Добавляем полупрозрачную табличку (поднимаем на 0.1 вместо 0.02)
+                props = dict(boxstyle='round', facecolor='white', alpha=0.8)
+                ax1.text(0.98, 0.10, textstr, transform=ax1.transAxes, fontsize=10,
+                        verticalalignment='bottom', horizontalalignment='right',
+                        bbox=props, family='monospace')
+
+            # Полная таблица справа с током и энергией
+            self.add_complete_info_table(ax_table, energy_values, current_data_dict)
 
             plt.tight_layout(rect=[0, 0, 1, 0.96])
             plt.show()
@@ -627,6 +664,122 @@ class Endurance_tdms_logs_dealer:
             print(f"Ошибка при построении графиков: {e}")
             import traceback
             traceback.print_exc()
+
+    def add_complete_info_table(self, ax, energy_values, current_data_dict):
+        """
+        Полная информационная таблица с током и энергией
+        """
+        ax.axis('off')
+
+        # Подготовка данных для таблицы
+        table_data = []
+
+        # Заголовок
+        table_data.append(['PARAMETER', 'VALUE', 'UNIT'])
+
+        # Добавляем значения энергии
+        motor_energy = energy_values.get('Motor', 0)
+        ecu_energy = energy_values.get('ECU', 0)
+
+        table_data.append(['Motor Energy', f'{motor_energy:,.4f}', 'J'])
+        table_data.append(['ECU Energy', f'{ecu_energy:,.4f}', 'J'])
+
+        # Добавляем статистику по току
+        if 'Motor' in current_data_dict:
+            motor_current = current_data_dict['Motor']
+            table_data.append(['Motor Current', '', ''])
+            table_data.append(['  Avg', f'{np.mean(motor_current):.4f}', 'A'])
+            table_data.append(['  Max', f'{np.max(motor_current):.4f}', 'A'])
+            table_data.append(['  Min', f'{np.min(motor_current):.4f}', 'A'])
+
+        if 'ECU' in current_data_dict:
+            ecu_current = current_data_dict['ECU']
+            table_data.append(['ECU Current', '', ''])
+            table_data.append(['  Avg', f'{np.mean(ecu_current):.4f}', 'A'])
+            table_data.append(['  Max', f'{np.max(ecu_current):.4f}', 'A'])
+            table_data.append(['  Min', f'{np.min(ecu_current):.4f}', 'A'])
+
+        # Создаем таблицу
+        table = ax.table(
+            cellText=table_data,
+            cellLoc='center',
+            loc='center',
+            bbox=[0.1, 0.1, 0.8, 0.8]
+        )
+
+        # Настраиваем стиль таблицы
+        table.auto_set_font_size(False)
+        table.set_fontsize(10)
+        table.scale(1, 1.3)
+
+        for key, cell in table.get_celld().items():
+            cell.set_height(0.08)
+
+        # Выделяем важные строки
+        for i, row in enumerate(table_data):
+            if any(x in row[0] for x in ['Motor Energy', 'ECU Energy']):
+                for j in range(len(row)):
+                    table[(i, j)].set_facecolor('#FFE4B5')
+                    table[(i, j)].set_text_props(weight='bold')
+
+            elif any(x in row[0] for x in ['Motor Current', 'ECU Current']):
+                for j in range(len(row)):
+                    table[(i, j)].set_facecolor('#E6E6FA')
+                    table[(i, j)].set_text_props(weight='bold')
+
+        ax.set_title('Energy & Current Analysis', fontsize=12, fontweight='bold', pad=20)
+
+
+
+
+    def add_simple_info_table(self, ax, energy_values):
+        """
+        Упрощенная информационная таблица только с основными данными
+        """
+        ax.axis('off')
+
+        # Подготовка данных для таблицы
+        table_data = []
+
+        # Заголовок
+        table_data.append(['ENERGY SUMMARY', 'JOULE'])
+        table_data.append(['='*20, '='*15])
+
+        # Добавляем значения энергии
+        motor_energy = energy_values.get('Motor', 0)
+        ecu_energy = energy_values.get('ECU', 0)
+
+        table_data.append(['Motor Current', f'{motor_energy:,.4f}'])
+        table_data.append(['ECU Current', f'{ecu_energy:,.4f}'])
+
+        # Создаем таблицу
+        table = ax.table(
+            cellText=table_data,
+            cellLoc='center',
+            loc='center',
+            bbox=[0.1, 0.1, 0.8, 0.8]
+        )
+
+        # Настраиваем стиль таблицы
+        table.auto_set_font_size(False)
+        table.set_fontsize(11)
+        table.scale(1, 1.5)
+
+        for key, cell in table.get_celld().items():
+            cell.set_height(0.1)
+
+        # Выделяем важные строки
+        for i, row in enumerate(table_data):
+            if any(x in row[0] for x in ['Motor', 'ECU']):
+                for j in range(len(row)):
+                    table[(i, j)].set_facecolor('#E6E6FA')
+                    table[(i, j)].set_text_props(weight='bold')
+
+        ax.set_title('Energy Summary', fontsize=12, fontweight='bold', pad=20)
+
+
+
+
 
 
 
@@ -660,13 +813,13 @@ class Endurance_tdms_logs_dealer:
             short_name = short_name.split('(')[0].strip()
 
             # Округляем до 4 знаков после запятой
-            energy_kj = energy / 1000
-            table_data.append([short_name, f'{energy_kj:,.4f}', 'kJ'])
+            energy_j = energy
+            table_data.append([short_name, f'{energy_j:,.4f}', 'J'])
             total_energy += energy
 
         # Округляем общую энергию до 4 знаков
-        total_energy_kj = total_energy / 1000
-        table_data.append(['TOTAL ENERGY', f'{total_energy_kj:,.4f}', 'kJ'])
+        total_energy_j = total_energy
+        table_data.append(['TOTAL ENERGY', f'{total_energy_j:,.4f}', 'J'])
         table_data.append(['─'*25, '─'*18, '─'*10])
 
         # Простой анализ
