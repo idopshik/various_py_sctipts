@@ -8,14 +8,16 @@ import pandas as pd
 from nptdms import TdmsFile
 import numpy as np
 
+import matplotlib
+matplotlib.use('TkAgg')  # Явно указываем Tkinter бэкенд
 import matplotlib.pyplot as plt
+
 import glob
 import tempfile
 
 import webbrowser
 import plotly.graph_objects as go
 
-#  matplotlib.use('TkAgg')  # Добавьте в начале файла, после импортов
 
 CURRENT_SCALE = 60
 
@@ -143,6 +145,9 @@ class GuiDataChooser:
 
         # Загружаем последний использованный путь из .ini файла
         self.load_initial_path()
+
+
+        self.shutdown_event = threading.Event()
 
     def open_folder(self):
         """Метод для открытия диалога выбора папки и обработки результата"""
@@ -305,9 +310,17 @@ class GuiDataChooser:
             self.processor.create_interactive_plot(file_path)
         except Exception as e:
             print(f"Ошибка при создании интерактивного графика: {e}")
+            import traceback
+            traceback.print_exc()
         finally:
-            # Завершаем в главном потоке
-            self.root.after(0, self.processing_finished)
+            # Завершаем в главном потоке с проверкой
+            try:
+                if self.root and self.root.winfo_exists():
+                    self.root.after(0, self.processing_finished)
+                else:
+                    self.processing_finished()
+            except:
+                self.processing_finished()
 
     def save_path_to_ini(self, path):
         """Сохраняет путь в файл конфигурации endu_tpms_analysis_settings.ini"""
@@ -400,14 +413,14 @@ class GuiDataChooser:
         self.processor = None
         self.update_check_file_button_state()
 
+
     def cancel_processing(self):
         """Останавливает процесс обработки"""
         self.stop_processing = True
+        self.shutdown_event.set()  # Сигнал всем потокам о завершении
         if self.processor:
             self.processor.cancel()
-        # Очищаем ссылку на поток
         self.processing_thread = None
-        # Вызываем завершение в главном потоке
         self.root.after(0, self.processing_finished)
 
 
@@ -421,6 +434,13 @@ class Endurance_tdms_logs_dealer:
     def __init__(self, folder_path):
         self.folder_path = folder_path
         self._cancel = False
+
+    def __del__(self):
+        """Очистка ресурсов при удалении объекта"""
+        try:
+            plt.close('all')  # Закрываем все фигуры matplotlib
+        except:
+            pass
 
     def process(self, gui_instance):
         """Основной метод обработки - обход всех TDMS файлов в папке"""
@@ -592,25 +612,26 @@ class Endurance_tdms_logs_dealer:
             current_cols = []  # Собираем оригинальные имена колонок токов
             energy_values = {}  # Сохраняем значения энергии для таблички
             current_data_dict = {}  # Сохраняем данные токов для статистики
+            time_data_dict = {}  # Сохраняем временные данные
 
             for key, (time_data, current_data, power_data, cumulative_energy) in self.plot_data.items():
                 if key.startswith('Motor_'):
                     col_name = key.replace('Motor_', '')
-                    # Упрощаем название для легенды
                     simple_name = 'Motor Current'
                     ax1.plot(time_data, current_data, label=simple_name, linewidth=2, color='red')
                     current_cols.append(col_name)
                     energy_values['Motor'] = self.energy_results.get("Motor Current", 0)
                     current_data_dict['Motor'] = current_data
+                    time_data_dict['Motor'] = time_data
 
                 elif key.startswith('ECU_'):
                     col_name = key.replace('ECU_', '')
-                    # Упрощаем название для легенды
                     simple_name = 'ECU Current'
                     ax1.plot(time_data, current_data, label=simple_name, linewidth=2, linestyle='--', color='blue')
                     current_cols.append(col_name)
                     energy_values['ECU'] = self.energy_results.get("ECU Current", 0)
                     current_data_dict['ECU'] = current_data
+                    time_data_dict['ECU'] = time_data
 
             # Настройка первого графика (токи)
             ax1.set_xlabel('Time (s)')
@@ -633,19 +654,23 @@ class Endurance_tdms_logs_dealer:
             ax2.legend()
             ax2.grid(True, alpha=0.3)
 
-            # Добавляем информационную табличку на график (поднимем выше)
+            # Добавляем информационную табличку справа внизу (поднимем выше)
             if energy_values:
                 motor_energy = energy_values.get('Motor', 0)
                 ecu_energy = energy_values.get('ECU', 0)
 
-                # Создаем текстовую табличку
                 textstr = f'Motor: {motor_energy:,.4f} J\nECU: {ecu_energy:,.4f} J'
 
-                # Добавляем полупрозрачную табличку (поднимаем на 0.1 вместо 0.02)
                 props = dict(boxstyle='round', facecolor='white', alpha=0.8)
                 ax1.text(0.98, 0.10, textstr, transform=ax1.transAxes, fontsize=10,
                         verticalalignment='bottom', horizontalalignment='right',
                         bbox=props, family='monospace')
+
+            # Добавляем вторую табличку слева внизу с анализом активного времени
+            if time_data_dict and current_data_dict:
+                active_stats = self.calculate_active_stats(time_data_dict, current_data_dict)
+                if active_stats:
+                    self.add_active_time_table(ax1, active_stats)
 
             # Полная таблица справа с током и энергией
             self.add_complete_info_table(ax_table, energy_values, current_data_dict)
@@ -664,6 +689,96 @@ class Endurance_tdms_logs_dealer:
             print(f"Ошибка при построении графиков: {e}")
             import traceback
             traceback.print_exc()
+
+    def calculate_active_stats(self, time_data_dict, current_data_dict, threshold=0.3):
+        """
+        Рассчитывает статистику активного времени (ток > 300mA)
+        """
+        active_stats = {}
+
+        for signal_type in ['Motor', 'ECU']:
+            if signal_type in time_data_dict and signal_type in current_data_dict:
+                time_data = time_data_dict[signal_type]
+                current_data = current_data_dict[signal_type]
+
+                # Находим активные участки (ток > 300mA)
+                active_mask = current_data > threshold
+
+                if not np.any(active_mask):
+                    # Нет активных участков
+                    active_stats[signal_type] = {
+                        'has_activity': False,
+                        'active_time': 0.0,
+                        'avg_current_active': 0.0,
+                        'max_current_active': 0.0
+                    }
+                    continue
+
+                # Находим начало и конец активного периода
+                active_indices = np.where(active_mask)[0]
+                start_idx = active_indices[0]
+                end_idx = active_indices[-1]
+
+                # Время активного периода
+                active_time = time_data[end_idx] - time_data[start_idx]
+
+                # Ток только в активном периоде
+                active_currents = current_data[start_idx:end_idx+1]
+
+                active_stats[signal_type] = {
+                    'has_activity': True,
+                    'active_time': active_time,
+                    'avg_current_active': np.mean(active_currents),
+                    'max_current_active': np.max(active_currents),
+                    'start_time': time_data[start_idx],
+                    'end_time': time_data[end_idx]
+                }
+
+        return active_stats
+
+    def add_active_time_table(self, ax, active_stats):
+        """
+        Добавляет табличку с анализом активного времени слева внизу
+        """
+        # Подготовка данных для таблицы
+        table_data = []
+
+        for signal_type in ['Motor', 'ECU']:
+            if signal_type in active_stats:
+                stats = active_stats[signal_type]
+
+                if stats['has_activity']:
+                    table_data.append([f'{signal_type} Active', '', ''])
+                    table_data.append(['Time', f"{stats['active_time']:.3f}", 's'])
+                    table_data.append(['Avg Cur.', f"{stats['avg_current_active']:.3f}", 'A'])
+                    table_data.append(['Max Cur.', f"{stats['max_current_active']:.3f}", 'A'])
+                    table_data.append(['', '', ''])
+                else:
+                    table_data.append([f'{signal_type}', 'No activity', ''])
+                    table_data.append(['', '', ''])
+
+        if not table_data:
+            return
+
+        # Создаем текстовую табличку
+        textstr = ''
+        for row in table_data:
+            if row[1]:  # Если есть значение
+                textstr += f"{row[0]:<12} {row[1]:<8} {row[2]}\n"
+            else:
+                textstr += f"{row[0]}\n"
+
+        # Добавляем полупрозрачную табличку слева внизу
+        props = dict(boxstyle='round', facecolor='white', alpha=0.8)
+        ax.text(0.02, 0.10, textstr, transform=ax.transAxes, fontsize=9,
+                verticalalignment='bottom', horizontalalignment='left',
+                bbox=props, family='monospace')
+
+
+
+
+
+
 
     def add_complete_info_table(self, ax, energy_values, current_data_dict):
         """
@@ -1197,7 +1312,17 @@ class Endurance_tdms_logs_dealer:
         """
         Создает интерактивный график только для активного участка и открывает в браузере
         """
+
         print(f"Создание интерактивного графика для: {file_path}")
+
+        # Проверяем, не завершена ли работа GUI
+        if (hasattr(self, 'gui_instance') and self.gui_instance and
+            hasattr(self.gui_instance, 'root') and self.gui_instance.root):
+            if not self.gui_instance.root.winfo_exists():
+                print("Главное окно закрыто, прерываем обработку")
+                return
+
+
 
         try:
             # Проверка флага отмены
@@ -1337,8 +1462,12 @@ class Endurance_tdms_logs_dealer:
                 print(f"Интерактивный график открыт: {html_path}")
 
             # Планируем открытие браузера в главном потоке
-            if hasattr(self, 'gui_instance') and self.gui_instance:
-                self.gui_instance.root.after(0, open_browser)
+            if hasattr(self, 'gui_instance') and self.gui_instance and self.gui_instance.root:
+                try:
+                    self.gui_instance.root.after(0, open_browser)
+                except RuntimeError:
+                    # Если главный поток уже завершен, открываем напрямую
+                    open_browser()
             else:
                 open_browser()
 
