@@ -1,5 +1,14 @@
-import tkinter as tk
-from tkinter import ttk, filedialog, scrolledtext
+
+
+
+import sys
+from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
+                               QLabel, QLineEdit, QPushButton, QRadioButton, QScrollArea,
+                               QProgressBar, QFileDialog, QFrame)
+from PySide6.QtCore import Qt, QEvent,QTimer, QThread, Signal, QObject
+
+
+from PySide6.QtGui import QIcon, QPixmap
 import configparser
 import os
 import threading
@@ -7,425 +16,392 @@ import time
 import pandas as pd
 from nptdms import TdmsFile
 import numpy as np
-
 import matplotlib
-matplotlib.use('TkAgg')  # Явно указываем Tkinter бэкенд
+matplotlib.use('Qt5Agg')  # Используем Qt5 бэкенд для matplotlib
 import matplotlib.pyplot as plt
-
 import glob
 import tempfile
-
 import webbrowser
 import plotly.graph_objects as go
-
 
 CURRENT_SCALE = 60
 
 
+class FileCheckWorker(QObject):
+    finished = Signal()
+
+    def __init__(self, processor, file_path, gui_instance):
+        super().__init__()
+        self.processor = processor
+        self.file_path = file_path
+        self.gui_instance = gui_instance
+
+    def run(self):
+        try:
+            self.processor.check_file(self.file_path, self.gui_instance)
+        except Exception as e:
+            print(f"Ошибка при проверке файла: {e}")
+        finally:
+            self.finished.emit()
+
+class InteractiveWorker(QObject):
+    finished = Signal()
+
+    def __init__(self, processor, file_path):
+        super().__init__()
+        self.processor = processor
+        self.file_path = file_path
+
+    def run(self):
+        try:
+            self.processor.create_interactive_plot(self.file_path)
+        except Exception as e:
+            print(f"Ошибка при создании интерактивного графика: {e}")
+        finally:
+            self.finished.emit()
 
 
+class ProcessingThread(QThread):
+    finished_signal = Signal()
+    progress_signal = Signal(int, int)
+
+    def __init__(self, target, args=()):
+        super().__init__()
+        self.target = target
+        self.args = args
+
+    def run(self):
+        self.target(*self.args)
+        self.finished_signal.emit()
 
 
-
-
-class GuiDataChooser:
-    def __init__(self, root):
-        # Инициализация главного окна
-        self.root = root
-        self.root.title("TDMS Converter - Выбор данных")
-        self.root.geometry("800x600")
+class GuiDataChooser(QMainWindow):
+    create_plots_requested = Signal()
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("TDMS Converter - Выбор данных")
+        self.setGeometry(100, 100, 800, 600)
 
         # Установка иконки приложения
         try:
-            # Для Windows
-            self.root.iconbitmap("endu_tdms_app.ico")
+            self.setWindowIcon(QIcon("endu_tdms_app.ico"))
         except:
             try:
-                # Для Linux (нужно преобразовать в PNG и использовать iconphoto)
-                icon = tk.PhotoImage(file="app.png")
-                self.root.iconphoto(False, icon)
+                self.setWindowIcon(QIcon("app.png"))
             except:
                 print("Не удалось загрузить иконку приложения")
 
-        # Создаем объект стиля
-        self.style = ttk.Style()
-        # Пробуем установить тему (на некоторых системах может не быть 'clam')
-        try:
-            self.style.theme_use('clam')
-        except:
-            pass
+        # Основной виджет и макет
+        self.central_widget = QWidget()
+        self.setCentralWidget(self.central_widget)
+        self.main_layout = QVBoxLayout(self.central_widget)
 
-        # Настраиваем цвета и шрифты через стиль
-        self.style.configure('.', font=('Helvetica', 16))
-        self.style.configure('TFrame', background='#f0f8f0')  # Слабо-зеленоватый
-        self.style.configure('TLabel', background='#f0f8f0')
-        self.style.configure('TButton', background='#e0f0e0')
-        self.style.configure('TEntry', fieldbackground='#ffffff')
-
-        # Основной фрейм для размещения элементов
-        main_frame = ttk.Frame(root, padding="10")
-        main_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
-
-        # Конфигурация веса строк и колонок для растягивания
-        root.columnconfigure(0, weight=1)
-        root.rowconfigure(0, weight=1)
-        main_frame.columnconfigure(1, weight=1)  # Колонка с Entry будет растягиваться
-        main_frame.rowconfigure(1, weight=1)     # Строка со списком файлов будет растягиваться
-
-        # Переменная для хранения пути к папке
-        self.folder_path = tk.StringVar()
+        # Путь к папке
+        self.folder_path = ""
         self.processor = None
         self.processing_thread = None
         self.stop_processing = False
-        self.selected_file = tk.StringVar()  # Для хранения выбранного файла (радио-кнопки)
-        self.file_radios = {}  # Словарь для хранения радио-кнопок файлов
+        self.selected_file = None
+        self.file_radios = {}
 
-        # Метка для пути
-        ttk.Label(main_frame, text="Папка с данными:").grid(row=0, column=0, sticky=tk.W, pady=(0, 10))
+        # Верхний фрейм: метка, поле ввода и кнопка
+        top_frame = QWidget()
+        top_layout = QHBoxLayout(top_frame)
+        top_layout.setContentsMargins(10, 10, 10, 10)
 
-        # Поле Entry для отображения и ввода пути
-        path_entry = ttk.Entry(main_frame, textvariable=self.folder_path, width=50)
-        path_entry.grid(row=0, column=1, sticky=(tk.W, tk.E), padx=(5, 0), pady=(0, 10))
+        self.path_label = QLabel("Папка с данными:")
+        top_layout.addWidget(self.path_label)
 
-        # Кнопка "Open Folder"
-        self.open_btn = ttk.Button(main_frame, text="Open Folder", command=self.open_folder)
-        self.open_btn.grid(row=0, column=2, sticky=tk.W, padx=(5, 0), pady=(0, 10))
+        self.path_entry = QLineEdit()
+        self.path_entry.setFixedWidth(400)
+        top_layout.addWidget(self.path_entry)
 
-        # Фрейм для списка файлов с радио-кнопками
-        self.file_frame = ttk.Frame(main_frame)
-        self.file_frame.grid(row=1, column=0, columnspan=3, sticky=(tk.W, tk.E, tk.N, tk.S), pady=(0, 10))
+        self.open_btn = QPushButton("Open Folder")
+        self.open_btn.clicked.connect(self.open_folder)
+        top_layout.addWidget(self.open_btn)
+        top_layout.addStretch()
 
-        # Canvas и Scrollbar для прокрутки списка файлов
-        self.canvas = tk.Canvas(self.file_frame, bg='white')
-        self.scrollbar = ttk.Scrollbar(self.file_frame, orient="vertical", command=self.canvas.yview)
-        self.scrollable_frame = ttk.Frame(self.canvas)
+        self.main_layout.addWidget(top_frame)
 
-        self.scrollable_frame.bind(
-            "<Configure>",
-            lambda e: self.canvas.configure(scrollregion=self.canvas.bbox("all"))
-        )
+        # Область для списка файлов
+        self.scroll_area = QScrollArea()
+        self.scroll_area.setWidgetResizable(True)
+        self.file_widget = QWidget()
+        self.file_layout = QVBoxLayout(self.file_widget)
+        self.file_layout.setAlignment(Qt.AlignTop)
+        self.scroll_area.setWidget(self.file_widget)
+        self.main_layout.addWidget(self.scroll_area)
 
-        self.canvas.create_window((0, 0), window=self.scrollable_frame, anchor="nw")
-        self.canvas.configure(yscrollcommand=self.scrollbar.set)
+        # Фрейм для кнопок
+        button_frame = QWidget()
+        button_layout = QHBoxLayout(button_frame)
 
-        self.canvas.pack(side="left", fill="both", expand=True)
-        self.scrollbar.pack(side="right", fill="y")
+        self.check_file_btn = QPushButton("Check File")
+        self.check_file_btn.setEnabled(False)
+        self.check_file_btn.clicked.connect(self.check_selected_file)
+        button_layout.addWidget(self.check_file_btn)
 
-        # Фрейм для кнопок Process, Check File, DoInteractive и Cancel
-        button_frame = ttk.Frame(main_frame)
-        button_frame.grid(row=2, column=0, columnspan=3, pady=(10, 5), sticky=(tk.W, tk.E))
+        self.do_interactive_btn = QPushButton("Interactive")
+        self.do_interactive_btn.setEnabled(False)
+        self.do_interactive_btn.clicked.connect(self.do_interactive)
+        button_layout.addWidget(self.do_interactive_btn)
 
-        # Кнопка Check File (слева)
-        self.check_file_btn = ttk.Button(button_frame, text="Check File",
-                                       command=self.check_selected_file,
-                                       state=tk.DISABLED)
-        self.check_file_btn.pack(side=tk.LEFT, padx=(0, 5))
+        button_layout.addStretch()
 
-        # Кнопка DoInteractive (справа от Check File)
-        self.do_interactive_btn = ttk.Button(button_frame, text="Interactive",
-                                           command=self.do_interactive,
-                                           state=tk.DISABLED)
-        self.do_interactive_btn.pack(side=tk.LEFT, padx=(5, 0))
+        self.cancel_btn = QPushButton("Cancel")
+        self.cancel_btn.setEnabled(False)
+        self.cancel_btn.clicked.connect(self.cancel_processing)
+        button_layout.addWidget(self.cancel_btn)
 
-        # Кнопка Cancel (справа)
-        self.cancel_btn = ttk.Button(button_frame, text="Cancel",
-                                   command=self.cancel_processing,
-                                   state=tk.DISABLED)
-        self.cancel_btn.pack(side=tk.RIGHT, padx=(5, 0))
+        self.process_btn = QPushButton("Process")
+        self.process_btn.clicked.connect(self.start_processing)
+        button_layout.addWidget(self.process_btn)
 
-        # Кнопка Process (справа)
-        self.process_btn = ttk.Button(button_frame, text="Process",
-                                    command=self.start_processing)
-        self.process_btn.pack(side=tk.RIGHT)
+        self.main_layout.addWidget(button_frame)
 
         # Прогрессбар
-        self.progress_bar = ttk.Progressbar(main_frame, mode='determinate', maximum=100)
-        self.progress_bar.grid(row=3, column=0, columnspan=3, sticky=(tk.W, tk.E), pady=(5, 0))
-        self.hide_progress_bar()  # Скрываем прогрессбар initially
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setMaximum(100)
+        self.progress_bar.setVisible(False)
+        self.main_layout.addWidget(self.progress_bar)
 
-        # Загружаем последний использованный путь из .ini файла
+        # Стилизация
+        self.setStyleSheet("""
+            QWidget { font-size: 16px; background-color: #f0f8f0; }
+            QPushButton { background-color: #e0f0e0; padding: 5px; }
+            QLineEdit { background-color: #ffffff; }
+        """)
+
+        # Загружаем последний путь
         self.load_initial_path()
 
+        self._processing = False
 
-        self.shutdown_event = threading.Event()
+        self.create_plots_requested.connect(self.on_create_plots_requested)
+
+    def on_create_plots_requested(self):
+        """Обработчик запроса на создание графиков из другого потока"""
+        if hasattr(self, 'processor') and self.processor:
+            self.processor.create_plots_in_main_thread()
 
     def open_folder(self):
-        """Метод для открытия диалога выбора папки и обработки результата"""
-        selected_folder = filedialog.askdirectory(title="Выберите папку с TDMS файлами")
-        if selected_folder:  # Если папка выбрана (не нажали 'Cancel')
-            self.folder_path.set(selected_folder)
-            self.save_path_to_ini(selected_folder)
-            self.update_file_list(selected_folder)
-            self.hide_progress_bar()  # Скрываем прогрессбар при смене папки
+        folder = QFileDialog.getExistingDirectory(self, "Выберите папку с TDMS файлами")
+        if folder:
+            self.folder_path = folder
+            self.path_entry.setText(folder)
+            self.save_path_to_ini(folder)
+            self.update_file_list(folder)
+            self.progress_bar.setVisible(False)
 
     def update_file_list(self, folder_path):
-        """Метод для обновления списка файлов с радио-кнопками"""
         # Очищаем текущий список
-        for widget in self.scrollable_frame.winfo_children():
-            widget.destroy()
+        for radio in self.file_radios.values():
+            radio.deleteLater()
         self.file_radios.clear()
-        self.selected_file.set("")  # Сбрасываем выбор
+        self.selected_file = None
+        self.check_file_btn.setEnabled(False)
+        self.do_interactive_btn.setEnabled(False)
 
         try:
-            # Получаем список файлов в папке
-            files = os.listdir(folder_path)
-            # Фильтруем, чтобы показать только файлы (не папки)
-            files = [f for f in files if os.path.isfile(os.path.join(folder_path, f))]
-
-            # Сортируем файлы для удобства
+            files = [f for f in os.listdir(folder_path) if os.path.isfile(os.path.join(folder_path, f))]
             files.sort()
 
             if not files:
-                label = ttk.Label(self.scrollable_frame, text="Папка пуста.")
-                label.pack(pady=5)
+                label = QLabel("Папка пуста.")
+                self.file_layout.addWidget(label)
             else:
-                # Создаем радио-кнопки для каждого файла
+                button_group = []
                 for file in files:
-                    self.create_file_radio(file)
+                    radio = QRadioButton(file)
+                    radio.toggled.connect(lambda checked, f=file: self.on_radio_toggled(checked, f))
+                    self.file_layout.addWidget(radio)
+                    self.file_radios[file] = radio
+                    button_group.append(radio)
+                self.file_layout.addStretch()
 
-                # Биндим изменение состояния
-                self.update_check_file_button_state()
-
-        except PermissionError:
-            label = ttk.Label(self.scrollable_frame, text="Ошибка: Нет доступа к папке.")
-            label.pack(pady=5)
-        except FileNotFoundError:
-            label = ttk.Label(self.scrollable_frame, text="Ошибка: Папка не найдена.")
-            label.pack(pady=5)
         except Exception as e:
-            label = ttk.Label(self.scrollable_frame, text=f"Произошла ошибка: {e}")
-            label.pack(pady=5)
+            label = QLabel(f"Ошибка: {str(e)}")
+            self.file_layout.addWidget(label)
 
-    def create_file_radio(self, filename):
-        """Создает радио-кнопку для файла"""
-        # Фрейм для радио и метки
-        frame = ttk.Frame(self.scrollable_frame)
-        frame.pack(fill=tk.X, padx=5, pady=2)
+    def on_radio_toggled(self, checked, filename):
+        """Обработчик переключения радиокнопок"""
+        if checked:
+            self.selected_file = filename
+        else:
+            # Если текущая кнопка отключена, но есть другие выбранные
+            if self.selected_file == filename:
+                # Проверяем, есть ли другие выбранные радиокнопки
+                any_checked = any(radio.isChecked() for radio in self.file_radios.values())
+                if not any_checked:
+                    self.selected_file = None
+                else:
+                    # Находим первую выбранную радиокнопку
+                    for file, radio in self.file_radios.items():
+                        if radio.isChecked():
+                            self.selected_file = file
+                            break
 
-        # Радио-кнопка
-        radio = ttk.Radiobutton(frame, variable=self.selected_file, value=filename,
-                                command=self.update_check_file_button_state)
-        radio.pack(side=tk.LEFT)
-
-        # Метка с именем файла
-        label = ttk.Label(frame, text=filename, font=('Courier New', 12))
-        label.pack(side=tk.LEFT, padx=(5, 0))
-
-        # Сохраняем в словарь
-        self.file_radios[filename] = {
-            'radio': radio,
-            'label': label,
-            'frame': frame
-        }
+        # Обновляем состояние кнопок
+        self.update_check_file_button_state()
 
     def update_check_file_button_state(self):
-        """Обновляет состояние кнопок Check File и DoInteractive в зависимости от выбора"""
-        if self.selected_file.get():
-            self.check_file_btn.config(state=tk.NORMAL)
-            self.do_interactive_btn.config(state=tk.NORMAL)
+        print(f"Updating button state. Selected file: {self.selected_file}, Processing: {self._processing}")
+
+        # Проверяем, есть ли выбранный файл и не идет ли обработка
+        if self.selected_file and not self._processing:
+            self.check_file_btn.setEnabled(True)
+            self.do_interactive_btn.setEnabled(True)
+            print("Buttons enabled")
         else:
-            self.check_file_btn.config(state=tk.DISABLED)
-            self.do_interactive_btn.config(state=tk.DISABLED)
+            self.check_file_btn.setEnabled(False)
+            self.do_interactive_btn.setEnabled(False)
+            print("Buttons disabled")
+
 
     def get_selected_file(self):
-        """Возвращает путь к выбранному файлу"""
-        selected = self.selected_file.get()
-        if selected:
-            folder = self.folder_path.get()
-            return os.path.join(folder, selected)
-        return None
+        return os.path.join(self.folder_path, self.selected_file) if self.selected_file else None
 
     def check_selected_file(self):
-        """Запускает проверку выбранного файла"""
         selected_file = self.get_selected_file()
         if not selected_file:
             return
 
-        # Меняем состояние кнопок
-        self.check_file_btn.config(state=tk.DISABLED)
-        self.do_interactive_btn.config(state=tk.DISABLED)
-        self.cancel_btn.config(state=tk.NORMAL)
+        self._processing = True
+        self.check_file_btn.setEnabled(False)
+        self.do_interactive_btn.setEnabled(False)
+        self.cancel_btn.setEnabled(True)
+        self.progress_bar.setVisible(True)
+        self.progress_bar.setValue(0)
 
-        # Показываем прогрессбар
-        self.show_progress_bar()
-
-        # Создаем экземпляр обработчика
-        self.processor = Endurance_tdms_logs_dealer(self.folder_path.get())
+        self.processor = Endurance_tdms_logs_dealer(self.folder_path)
         self.stop_processing = False
 
-        # Запускаем проверку в отдельном потоке
-        self.processing_thread = threading.Thread(
-            target=self.check_file_thread,
-            args=(selected_file,)
-        )
-        self.processing_thread.daemon = True
+        # ЗАМЕНИТЕ на QThread
+        self.processing_thread = QThread()
+        self.worker = FileCheckWorker(self.processor, selected_file, self)
+        self.worker.moveToThread(self.processing_thread)
+        self.processing_thread.started.connect(self.worker.run)
+        self.worker.finished.connect(self.processing_finished)
+        self.worker.finished.connect(self.processing_thread.quit)
+        self.worker.finished.connect(self.worker.deleteLater)
+        self.processing_thread.finished.connect(self.processing_thread.deleteLater)
         self.processing_thread.start()
-
-        # Запускаем проверку завершения потока
-        self.check_thread_completion()
-
-    def check_file_thread(self, file_path):
-        """Метод, который выполняется в отдельном потоке для проверки файла"""
-        try:
-            self.processor.check_file(file_path, self)
-        except Exception as e:
-            print(f"Ошибка при проверке файла: {e}")
-
-
 
     def do_interactive(self):
-        """Открывает интерактивный график в браузере для выбранного файла"""
         selected_file = self.get_selected_file()
         if not selected_file:
             return
 
-        # Меняем состояние кнопок
-        self.do_interactive_btn.config(state=tk.DISABLED)
-        self.check_file_btn.config(state=tk.DISABLED)
-        self.cancel_btn.config(state=tk.NORMAL)
+        self._processing = True
+        self.do_interactive_btn.setEnabled(False)
+        self.check_file_btn.setEnabled(False)
+        self.cancel_btn.setEnabled(True)
+        self.progress_bar.setVisible(True)
+        self.progress_bar.setValue(0)
 
-        # Показываем прогрессбар
-        self.show_progress_bar()
-
-        # Создаем экземпляр обработчика
-        self.processor = Endurance_tdms_logs_dealer(self.folder_path.get())
-        self.processor.gui_instance = self  # Передаём ссылку на GUI
+        self.processor = Endurance_tdms_logs_dealer(self.folder_path)
+        self.processor.gui_instance = self
         self.stop_processing = False
 
-        # Запускаем интерактив в отдельном потоке
-        self.processing_thread = threading.Thread(
-            target=self.interactive_thread,
-            args=(selected_file,)
-        )
-        self.processing_thread.daemon = True
+        # ЗАМЕНИТЕ на QThread
+        self.processing_thread = QThread()
+        self.worker = InteractiveWorker(self.processor, selected_file)
+        self.worker.moveToThread(self.processing_thread)
+        self.processing_thread.started.connect(self.worker.run)
+        self.worker.finished.connect(self.processing_finished)
+        self.worker.finished.connect(self.processing_thread.quit)
+        self.worker.finished.connect(self.worker.deleteLater)
+        self.processing_thread.finished.connect(self.processing_thread.deleteLater)
         self.processing_thread.start()
 
-        # Запускаем проверку завершения потока
-        self.check_thread_completion()
+    def processing_finished(self):
+        self._processing = False
+        self.progress_bar.setVisible(False)
+        self.process_btn.setEnabled(True)
+        self.cancel_btn.setEnabled(False)
+        self.processor = None
 
+        # ВАЖНО: обновляем состояние кнопок на основе текущего выбора
+        self.update_check_file_button_state()
 
-    def interactive_thread(self, file_path):
-        """Метод для создания интерактивного графика в потоке"""
-        try:
-            self.processor.create_interactive_plot(file_path)
-        except Exception as e:
-            print(f"Ошибка при создании интерактивного графика: {e}")
-            import traceback
-            traceback.print_exc()
-        finally:
-            # Завершаем в главном потоке с проверкой
-            try:
-                if self.root and self.root.winfo_exists():
-                    self.root.after(0, self.processing_finished)
-                else:
-                    self.processing_finished()
-            except:
-                self.processing_finished()
+        print("Processing finished - buttons should be updated")
+
 
     def save_path_to_ini(self, path):
-        """Сохраняет путь в файл конфигурации endu_tpms_analysis_settings.ini"""
         config = configparser.ConfigParser()
         config['DEFAULT'] = {'LastFolderPath': path}
-
         with open('endu_tpms_analysis_settings.ini', 'w') as configfile:
             config.write(configfile)
 
     def load_initial_path(self):
-        """Загружает последний использованный путь из endu_tpms_analysis_settings.ini при запуске"""
         config = configparser.ConfigParser()
-        # Значение по умолчанию, если файла нет
         config['DEFAULT'] = {'LastFolderPath': ''}
-
         try:
             config.read('endu_tpms_analysis_settings.ini')
             last_path = config['DEFAULT'].get('LastFolderPath', '')
             if last_path and os.path.isdir(last_path):
-                self.folder_path.set(last_path)
+                self.folder_path = last_path
+                self.path_entry.setText(last_path)
                 self.update_file_list(last_path)
         except Exception as e:
             print(f"Ошибка при загрузке конфигурации: {e}")
 
-    def show_progress_bar(self):
-        """Показывает прогрессбар и запускает анимацию"""
-        self.progress_bar.grid()  # Показываем прогрессбар
-
-    def hide_progress_bar(self):
-        """Скрывает прогрессбар и останавливает анимацию"""
-        self.progress_bar.grid_remove()  # Скрываем прогрессбар
-
     def start_processing(self):
-        """Запускает процесс обработки в отдельном потоке"""
-        folder = self.folder_path.get()
+        folder = self.folder_path
         if not folder or not os.path.isdir(folder):
             return
 
-        # Меняем состояние кнопок
-        self.process_btn.config(state=tk.DISABLED)
-        self.check_file_btn.config(state=tk.DISABLED)
-        self.do_interactive_btn.config(state=tk.DISABLED)
-        self.cancel_btn.config(state=tk.NORMAL)
+        self.process_btn.setEnabled(False)
+        self.check_file_btn.setEnabled(False)
+        self.do_interactive_btn.setEnabled(False)
+        self.cancel_btn.setEnabled(True)
+        self.progress_bar.setVisible(True)
+        self.progress_bar.setValue(0)
 
-        # Показываем прогрессбар
-        self.show_progress_bar()
-        self.progress_bar['value'] = 0
-
-        # Создаем экземпляр обработчика
         self.processor = Endurance_tdms_logs_dealer(folder)
         self.stop_processing = False
 
-        # Запускаем обработку в отдельном потоке
-        self.processing_thread = threading.Thread(target=self.process_thread)
-        self.processing_thread.daemon = True
+        self.processing_thread = ProcessingThread(self.process_thread)
+        self.processing_thread.finished_signal.connect(self.processing_finished)
+        self.processing_thread.progress_signal.connect(self.update_progress)
         self.processing_thread.start()
 
-        # Запускаем проверку завершения потока
-        self.check_thread_completion()
-
     def process_thread(self):
-        """Метод, который выполняется в отдельном потоке"""
         try:
             self.processor.process(self)
         except Exception as e:
             print(f"Ошибка при обработке: {e}")
 
     def update_progress(self, current, total):
-        """Обновляет значение прогрессбара"""
         progress = (current / total) * 100
-        self.progress_bar['value'] = progress
-        self.root.update_idletasks()
+        self.progress_bar.setValue(int(progress))
 
-    def check_thread_completion(self):
-        """Проверяет завершение потока обработки"""
-        if self.processing_thread.is_alive():
-            # Если поток еще работает, проверяем снова через 100мс
-            self.root.after(100, self.check_thread_completion)
-        else:
-            # Если поток завершился, обновляем UI
-            self.processing_finished()
 
     def processing_finished(self):
-        """Вызывается при завершении обработки"""
-        self.hide_progress_bar()
-        self.process_btn.config(state=tk.NORMAL)
-        self.check_file_btn.config(state=tk.NORMAL)
-        self.do_interactive_btn.config(state=tk.NORMAL)
-        self.cancel_btn.config(state=tk.DISABLED)
+        self.progress_bar.setVisible(False)
+        self.process_btn.setEnabled(True)
+        self.cancel_btn.setEnabled(False)
         self.processor = None
-        self.update_check_file_button_state()
 
+        # НЕ сбрасываем состояние check_file_btn и do_interactive_btn здесь
+        # Вместо этого вызываем обновление состояния на основе выбранного файла
+        self.update_check_file_button_state()  # ← ЭТА СТРОКА ВАЖНА
 
     def cancel_processing(self):
-        """Останавливает процесс обработки"""
         self.stop_processing = True
-        self.shutdown_event.set()  # Сигнал всем потокам о завершении
+        self._processing = False  # ← ДОБАВЬТЕ ЭТУ СТРОКУ
         if self.processor:
             self.processor.cancel()
-        self.processing_thread = None
-        self.root.after(0, self.processing_finished)
 
+        # Завершаем поток если он существует
+        if hasattr(self, 'processing_thread') and self.processing_thread.isRunning():
+            self.processing_thread.quit()
+            self.processing_thread.wait()
 
+        self.processing_finished()
 
-
+        def after(self, ms, func):
+            QTimer.singleShot(ms, func)
 
 
 
@@ -493,7 +469,7 @@ class Endurance_tdms_logs_dealer:
                 print(f"Ошибка при обработке файла {tdms_file}: {e}")
 
             # Обновляем прогресс
-            gui_instance.root.after(0, gui_instance.update_progress, i, total_files)
+            gui_instance.update_progress(i, total_files)
 
             time.sleep(0.5)
 
@@ -577,7 +553,7 @@ class Endurance_tdms_logs_dealer:
             self.voltage = voltage  # Сохраняем напряжение для использования в графиках
 
             # Запускаем построение графиков
-            gui_instance.root.after(100, self.create_plots_in_main_thread)
+            gui_instance.create_plots_requested.emit()  # Нужно создать сигнал
 
             print(f"Проверка файла завершена")
             return True
@@ -1315,14 +1291,13 @@ class Endurance_tdms_logs_dealer:
 
         print(f"Создание интерактивного графика для: {file_path}")
 
-        # Проверяем, не завершена ли работа GUI
-        if (hasattr(self, 'gui_instance') and self.gui_instance and
-            hasattr(self.gui_instance, 'root') and self.gui_instance.root):
-            if not self.gui_instance.root.winfo_exists():
+        print(f"Создание интерактивного графика для: {file_path}")
+
+        # Проверяем, не завершена ли работа GUI (ПРАВИЛЬНАЯ версия для PySide6)
+        if hasattr(self, 'gui_instance') and self.gui_instance:
+            if not self.gui_instance.isVisible():  # Если окно не видно
                 print("Главное окно закрыто, прерываем обработку")
                 return
-
-
 
         try:
             # Проверка флага отмены
@@ -1456,25 +1431,21 @@ class Endurance_tdms_logs_dealer:
                 print("Обработка прервана перед открытием браузера")
                 return
 
-            # Открываем в браузере (в главном потоке через after)
+
+
+            # Открываем в браузере
             def open_browser():
                 webbrowser.open('file://' + os.path.abspath(html_path))
                 print(f"Интерактивный график открыт: {html_path}")
 
-            # Планируем открытие браузера в главном потоке
-            if hasattr(self, 'gui_instance') and self.gui_instance and self.gui_instance.root:
-                try:
-                    self.gui_instance.root.after(0, open_browser)
-                except RuntimeError:
-                    # Если главный поток уже завершен, открываем напрямую
-                    open_browser()
-            else:
-                open_browser()
+            # Всегда открываем напрямую, не нужно проверять root
+            open_browser()
 
         except Exception as e:
             print(f"Ошибка при создании интерактивного графика: {e}")
             import traceback
             traceback.print_exc()
+
 
 
 
@@ -1534,6 +1505,7 @@ class Endurance_tdms_logs_dealer:
 
 # Запуск приложения
 if __name__ == "__main__":
-    root = tk.Tk()
-    app = GuiDataChooser(root)
-    root.mainloop()
+    app = QApplication(sys.argv)
+    window = GuiDataChooser()
+    window.show()
+    sys.exit(app.exec())
