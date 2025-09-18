@@ -225,6 +225,10 @@ class GuiDataChooser(QMainWindow):
 
     def on_radio_toggled(self, checked, filename):
         """Обработчик переключения радиокнопок"""
+
+        """Обработчик переключения радиокнопок"""
+        print(f"Radio toggled: {filename}, checked: {checked}")
+
         if checked:
             self.selected_file = filename
         else:
@@ -377,15 +381,6 @@ class GuiDataChooser(QMainWindow):
         self.progress_bar.setValue(int(progress))
 
 
-    def processing_finished(self):
-        self.progress_bar.setVisible(False)
-        self.process_btn.setEnabled(True)
-        self.cancel_btn.setEnabled(False)
-        self.processor = None
-
-        # НЕ сбрасываем состояние check_file_btn и do_interactive_btn здесь
-        # Вместо этого вызываем обновление состояния на основе выбранного файла
-        self.update_check_file_button_state()  # ← ЭТА СТРОКА ВАЖНА
 
     def cancel_processing(self):
         self.stop_processing = True
@@ -400,8 +395,8 @@ class GuiDataChooser(QMainWindow):
 
         self.processing_finished()
 
-        def after(self, ms, func):
-            QTimer.singleShot(ms, func)
+    def after(self, ms, func):
+        QTimer.singleShot(ms, func)
 
 
 
@@ -578,6 +573,7 @@ class Endurance_tdms_logs_dealer:
             fig = plt.figure(figsize=(16, 10))
             gs = fig.add_gridspec(2, 2, width_ratios=[3, 1], height_ratios=[1, 1])
 
+
             ax1 = fig.add_subplot(gs[0, 0])  # Токи
             ax2 = fig.add_subplot(gs[1, 0])  # Накопленная энергия
             ax_table = fig.add_subplot(gs[:, 1])  # Таблица на всю высоту справа
@@ -652,6 +648,11 @@ class Endurance_tdms_logs_dealer:
             self.add_complete_info_table(ax_table, energy_values, current_data_dict)
 
             plt.tight_layout(rect=[0, 0, 1, 0.96])
+
+            # Добавляем между графиками больше чуть-чуть пространства, чтобы не
+            # налезали буквы друг на друга.
+            plt.subplots_adjust(hspace=0.270)
+
             plt.show()
 
             # Очищаем данные после построения
@@ -772,13 +773,13 @@ class Endurance_tdms_logs_dealer:
         motor_energy = energy_values.get('Motor', 0)
         ecu_energy = energy_values.get('ECU', 0)
 
-        table_data.append(['Motor Energy', f'{motor_energy:,.4f}', 'J'])
+        table_data.append(['M. Energy', f'{motor_energy:,.4f}', 'J'])
         table_data.append(['ECU Energy', f'{ecu_energy:,.4f}', 'J'])
 
         # Добавляем статистику по току
         if 'Motor' in current_data_dict:
             motor_current = current_data_dict['Motor']
-            table_data.append(['Motor Current', '', ''])
+            table_data.append(['M. Current', '', ''])
             table_data.append(['  Avg', f'{np.mean(motor_current):.4f}', 'A'])
             table_data.append(['  Max', f'{np.max(motor_current):.4f}', 'A'])
             table_data.append(['  Min', f'{np.min(motor_current):.4f}', 'A'])
