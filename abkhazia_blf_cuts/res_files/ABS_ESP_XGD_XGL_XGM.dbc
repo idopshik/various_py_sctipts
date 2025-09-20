@@ -1,0 +1,505 @@
+VERSION ""
+
+
+NS_ : 
+	NS_DESC_
+	CM_
+	BA_DEF_
+	BA_
+	VAL_
+	CAT_DEF_
+	CAT_
+	FILTER
+	BA_DEF_DEF_
+	EV_DATA_
+	ENVVAR_DATA_
+	SGTYPE_
+	SGTYPE_VAL_
+	BA_DEF_SGTYPE_
+	BA_SGTYPE_
+	SIG_TYPE_REF_
+	VAL_TABLE_
+	SIG_GROUP_
+	SIG_VALTYPE_
+	SIGTYPE_VALTYPE_
+	BO_TX_BU_
+	BA_DEF_REL_
+	BA_REL_
+	BA_DEF_DEF_REL_
+	BU_SG_REL_
+	BU_EV_REL_
+	BU_BO_REL_
+	SG_MUL_VAL_
+
+BS_:
+
+BU_: ABS_ESP
+
+
+BO_ 1745 Connect_ABS_ESP: 8 ABS_ESP
+ SG_ ConnectData : 7|64@0+ (1,0) [0|0] "" Vector__XXX
+
+BO_ 1744 Connect_ERA: 8 Vector__XXX
+ SG_ ConnectData : 7|64@0+ (1,0) [0|0] ""  ABS_ESP
+
+BO_ 372 AMT_to_ECU_01: 8 Vector__XXX
+ SG_ AMT_AT_Clock : 35|4@0+ (1,0) [0|15] ""  ABS_ESP
+ SG_ AMT_TransmRangeEngagedCur : 27|4@0+ (1,0) [0|15] ""  ABS_ESP
+ SG_ AMT_TransmRangeEngagedTar : 31|4@0+ (1,0) [0|15] ""  ABS_ESP
+
+BO_ 852 ABS_Status: 8 ABS_ESP
+ SG_ ABS_EmergencyBrake : 2|1@0+ (1,0) [0|0] "" Vector__XXX
+ SG_ ABS_Status_LC : 59|4@0+ (1,0) [0|15] "" Vector__XXX
+ SG_ ABS_EBDMalfunction : 53|1@0+ (1,0) [0|1] "" Vector__XXX
+ SG_ ABS_EBDInRegulation : 52|1@0+ (1,0) [0|1] "" Vector__XXX
+ SG_ ABS_MuxDiagnosticOn : 7|1@0+ (1,0) [0|0] "" Vector__XXX
+ SG_ ABS_BrakeSignal : 1|2@0+ (1,0) [0|3] "" Vector__XXX
+ SG_ ABS_ABSMalfunction : 55|1@0+ (1,0) [0|1] "" Vector__XXX
+ SG_ ABS_ABSInRegulation : 54|1@0+ (1,0) [0|1] "" Vector__XXX
+
+BO_ 2027 TesterResponse_ABS: 8 ABS_ESP
+ SG_ DIAGresponseData : 7|64@0+ (1,0) [0|0] "" Vector__XXX
+
+BO_ 2019 TesterRequest_ABS: 8 Vector__XXX
+ SG_ DIAGRequestData : 7|64@0+ (1,0) [0|0] ""  ABS_ESP
+
+BO_ 2015 TesterFunctionalReq: 8 Vector__XXX
+ SG_ DIAGRequestData : 7|64@0+ (1,0) [0|0] ""  ABS_ESP
+
+BO_ 481 ABS_ESP_LWS_Signal: 8 ABS_ESP
+ SG_ ESP_LWS_TrimmingStatus : 26|1@0+ (1,0) [0|1] "" Vector__XXX
+ SG_ ESP_LWS_Speed : 23|8@0+ (4,0) [0|1016] "deg/s" Vector__XXX
+ SG_ ESP_LWS_Signal_LC : 59|4@0+ (1,0) [0|15] "" Vector__XXX
+ SG_ ESP_LWS_Signal_CS : 63|4@0+ (1,0) [0|15] "" Vector__XXX
+ SG_ ESP_LWS_InternalState : 31|5@0+ (1,0) [0|31] "" Vector__XXX
+ SG_ ESP_LWS_FailureFlag : 24|1@0+ (1,0) [0|1] "" Vector__XXX
+ SG_ ESP_LWS_CalibrationStatus : 25|1@0+ (1,0) [0|1] "" Vector__XXX
+ SG_ ESP_LWS_Angle : 7|16@0- (0.1,0) [-3276.6|3276.6] "deg" Vector__XXX
+
+BO_ 613 ABS_WS2: 8 ABS_ESP
+ SG_ ABS_WS2_LC : 59|4@0+ (1,0) [0|15] "" Vector__XXX
+ SG_ ABS_WheelSpeedRRStatus : 25|1@0+ (1,0) [0|1] "" Vector__XXX
+ SG_ ABS_WheelSpeedRR : 23|14@0+ (0.03125,0) [0|512] "km/h" Vector__XXX
+ SG_ ABS_WheelSpeedRLStatus : 9|1@0+ (1,0) [0|1] "" Vector__XXX
+ SG_ ABS_WheelSpeedRL : 7|14@0+ (0.03125,0) [0|512] "km/h" Vector__XXX
+
+BO_ 608 ABS_WS1: 8 ABS_ESP
+ SG_ ABS_WS1_LC : 59|4@0+ (1,0) [0|15] "" Vector__XXX
+ SG_ ABS_WheelSpeedFRStatus : 25|1@0+ (1,0) [0|1] "" Vector__XXX
+ SG_ ABS_WheelSpeedFR : 23|14@0+ (0.03125,0) [0|512] "km/h" Vector__XXX
+ SG_ ABS_WheelSpeedFLStatus : 9|1@0+ (1,0) [0|1] "" Vector__XXX
+ SG_ ABS_WheelSpeedFL : 7|14@0+ (0.03125,0) [0|512] "km/h" Vector__XXX
+
+BO_ 636 ABS_Speed: 8 ABS_ESP
+ SG_ ABS_DistanceTraveled : 7|32@0+ (0.167,0) [0|0] "m" Vector__XXX
+ SG_ ABS_Speed_LC : 59|4@0+ (1,0) [0|15] "" Vector__XXX
+ SG_ ABS_VehicleSpeed : 39|16@0+ (0.01,0) [0|655.34] "km/h" Vector__XXX
+
+BO_ 0 TCM_TorqueControl_RN1: 8 Vector__XXX
+ SG_ TCM_RN1_LC : 35|4@0+ (1,0) [0|15] ""  ABS_ESP
+ SG_ TCM_CurrentRangeEngaged : 27|4@0+ (1,0) [0|0] ""  ABS_ESP
+ SG_ TCM_TargetRangeEngaged : 31|4@0+ (1,0) [0|0] ""  ABS_ESP
+
+BO_ 1361 ECM_Status: 8 Vector__XXX
+ SG_ ECM_MuxDiagnosticOn : 31|1@0+ (1,0) [0|1] ""  ABS_ESP
+
+BO_ 861 ECM_General: 8 Vector__XXX
+ SG_ ECM_NeutralState : 7|2@0+ (1,0) [0|0] ""  ABS_ESP
+ SG_ ECM_General_LC : 55|4@0+ (1,0) [0|15] ""  ABS_ESP
+ SG_ ECM_BrakeSignal : 37|2@0+ (1,0) [0|3] ""  ABS_ESP
+
+BO_ 734 COMBI_2: 8 Vector__XXX
+ SG_ COMBI_ReverseSts : 14|1@0+ (1,0) [0|0] ""  ABS_ESP
+ SG_ COMBI_DifferentialBlocking : 12|2@0+ (1,0) [0|0] ""  ABS_ESP
+
+BO_ 581 ABS_ESPStatus: 8 ABS_ESP
+ SG_ ABS_ESPStatus_CS : 39|8@0+ (1,0) [0|255] "" Vector__XXX
+ SG_ ESP_CutoffProhibitionReq : 31|1@0+ (1,0) [0|0] "" Vector__XXX
+ SG_ ESP_FastTorqueRequest : 11|12@0+ (0.5,-400) [-400|1647.5] "Nm" Vector__XXX
+ SG_ ABS_ESPStatus_LC : 59|4@0+ (1,0) [0|15] "" Vector__XXX
+ SG_ ESP_MSRTorqueRequest : 55|12@0+ (0.5,-400) [-400|1647.5] "Nm" Vector__XXX
+ SG_ ESP_SlowTorqueRequest : 7|12@0+ (0.5,-400) [-400|1647.5] "Nm" Vector__XXX
+ SG_ ABS_AYCInRegulation : 46|1@0+ (1,0) [0|0] "" Vector__XXX
+ SG_ ESP_for_TCM_Jatco_Shifting : 28|2@0+ (1,0) [3|3] "" Vector__XXX
+ SG_ ESP_TCS_AMRInregulation_for_TCM : 42|2@0+ (1,0) [0|3] "" Vector__XXX
+ SG_ ABS_TCSMalfunction : 26|1@0+ (1,0) [0|1] "" Vector__XXX
+ SG_ ABS_TCS_BMRInRegulation : 44|1@0+ (1,0) [0|1] "" Vector__XXX
+ SG_ ABS_TCS_AMRInRegulation : 43|1@0+ (1,0) [0|1] "" Vector__XXX
+ SG_ ABS_ESPPassiveSts : 24|1@0+ (1,0) [0|0] "" Vector__XXX
+ SG_ ABS_DTCInRegulation : 45|1@0+ (1,0) [0|1] "" Vector__XXX
+ SG_ ABS_ESPInRegulation : 47|1@0+ (1,0) [0|1] "" Vector__XXX
+ SG_ ABS_ESPMalfunction : 25|1@0+ (1,0) [0|1] "" Vector__XXX
+
+BO_ 386 ECM_TorqueControl_N1: 8 Vector__XXX
+ SG_ ECM_VirtualAcceleratorAngle : 39|8@0+ (0.391,0) [0|100] "%"  ABS_ESP
+
+BO_ 352 ECM_TorqueControl_RN2: 7 Vector__XXX
+ SG_ ECM_TargetEngineTorque : 7|12@0+ (0.5,-400) [-400|1647.5] "Nm"  ABS_ESP
+ SG_ ECM_PowertrainSetpointCpl : 47|10@0+ (0.125,0) [0|125] "%"  ABS_ESP
+ SG_ ECM_PowertrainSetpoint : 31|10@0+ (0.125,0) [0|125] "%"  ABS_ESP
+ SG_ ECM_EstimatedEngineTorque : 11|12@0+ (0.5,-400) [-400|1647] "Nm"  ABS_ESP
+
+BO_ 384 ECM_TorqueControl_RN1: 8 Vector__XXX
+ SG_ ECM_MaxAchievableTorque : 27|12@0+ (0.5,-400) [-400|1647] "Nm"  ABS_ESP
+ SG_ ECM_MeanEffectiveTorque : 23|12@0+ (0.5,-400) [-400|1647] "Nm"  ABS_ESP
+ SG_ ECM_EngineSpeedRPM : 7|16@0+ (0.125,0) [0|8191.75] "rpm"  ABS_ESP
+
+
+
+CM_ BO_ 372 "Только в комплектациях с AMT ! 
+";
+CM_ SG_ 372 AMT_AT_Clock "Alive Counter /  Сигнал проверки правильной последовательности кадров";
+CM_ SG_ 372 AMT_TransmRangeEngagedCur "gear information (without neutral information during active shift process)  /  Номер передачи.";
+CM_ SG_ 372 AMT_TransmRangeEngagedTar "acknowledged target gear";
+CM_ SG_ 852 ABS_EmergencyBrake "Emergency Brake signal in accordance with R13H
+Сигнал экстренного торможения в соответствии с правилом 13H.
+";
+CM_ SG_ 852 ABS_Status_LC "Live Counter /  Сигнал проверки правильной последовательности кадров";
+CM_ SG_ 852 ABS_EBDMalfunction "Malfunction of EBD
+Неисправность EBD";
+CM_ SG_ 852 ABS_EBDInRegulation "Active state of EBD function
+Признак вмешательства EBD";
+CM_ SG_ 852 ABS_MuxDiagnosticOn "Reserved for future.
+Must be = 1;
+Authorisation of storage of CAN mute/absent failures
+Разрешение мониторинга кадров об блока управления";
+CM_ SG_ 852 ABS_BrakeSignal "Brake pedal sensor signal.
+Сигнал датчкиа педали тормоза";
+CM_ SG_ 852 ABS_ABSMalfunction "Malfunction of ABS
+Неисправность ABS";
+CM_ SG_ 852 ABS_ABSInRegulation "Active state of ABS function
+Признак вмешательства АБС";
+CM_ BO_ 481 "Steering wheel angle message
+Reserved for future";
+CM_ SG_ 481 ESP_LWS_Signal_LC "Live Counter /  Сигнал проверки правильной последовательности кадров";
+CM_ SG_ 481 ESP_LWS_Signal_CS "CheckSum";
+CM_ BO_ 613 "Reserved for future";
+CM_ SG_ 613 ABS_WS2_LC "Live Counter /  Сигнал проверки правильной последовательности кадров";
+CM_ BO_ 608 "Reserved for future";
+CM_ SG_ 608 ABS_WS1_LC "Live Counter /  Сигнал проверки правильной последовательности кадров";
+CM_ SG_ 608 ABS_WheelSpeedFL "Front left wheel speed
+Скорость переднего левого колеса.";
+CM_ SG_ 636 ABS_DistanceTraveled "Reserved for future
+Сигнал не используется";
+CM_ SG_ 636 ABS_Speed_LC "Live Counter /  Сигнал проверки правильной последовательности кадров";
+CM_ SG_ 636 ABS_VehicleSpeed "Actual vehicle speed signal /
+Скорость автомобиля";
+CM_ BO_ 0 "Только в комплектациях с TCM ! ";
+CM_ SG_ 0 TCM_RN1_LC "Live counter /  Сигнал проверки правильной последовательности кадров";
+CM_ SG_ 0 TCM_CurrentRangeEngaged "Current gear position  /  Текущая передача ";
+CM_ SG_ 0 TCM_TargetRangeEngaged "Next gear position";
+CM_ SG_ 1361 ECM_MuxDiagnosticOn "Authorisation of storage of CAN mute/absent failures. / 1 - need to be transmitted  under normal conditions. 
+0 - modules will stop CAN message's cycle time monitoring / Разрешение диагностики по CAN-шине. 1 - разрешено,  0 - запрещено.
+";
+CM_ BO_ 861 "Ошибки двигателя на IVI";
+CM_ SG_ 861 ECM_NeutralState "Neutral state. For avto with MT only / Состояние нейтрали. Только для авто с МКП.";
+CM_ SG_ 861 ECM_General_LC "Live Counter /  Сигнал проверки правильной последовательности кадров";
+CM_ SG_ 861 ECM_BrakeSignal "Closed state of Brake switch
+Состояния выключателя сигнала тормоза.
+{  Change of value of the signal initiates instant transfer of message ECM_Geheral.
+   Изменение значения сигнала инициирует мгновенную передачу сообщения ECM_Geheral. } ";
+CM_ SG_ 734 COMBI_ReverseSts "Reverse state. For avto with MT only. /  Сосотояние выключателя задней передачи. Только для авто с МКП.";
+CM_ SG_ 734 COMBI_DifferentialBlocking "Differential вlocking / Блокировка дифференциала (зарезервировано для а/м 4 Х 4)";
+CM_ BO_ 581 "Только в комплектациях с  ESP !";
+CM_ SG_ 581 ABS_ESPStatus_CS "CheckSum. Modulo 256 sum of all frame bytes have to be 0
+Контрольная сумма. Сумма всех байт сообщения по модулю 256 должна быть равна нулю";
+CM_ SG_ 581 ESP_CutoffProhibitionReq "Cut off prohibition request from ESP
+Запрос запрета отсечки топлива от ESP
+";
+CM_ SG_ 581 ESP_FastTorqueRequest "requested ESP/ASR torque fast    /  быстрый запрос момента";
+CM_ SG_ 581 ABS_ESPStatus_LC "Live Counter /  Сигнал проверки правильной последовательности кадров";
+CM_ SG_ 581 ESP_MSRTorqueRequest "requested MSR torque / запрос момента MSR ";
+CM_ SG_ 581 ESP_SlowTorqueRequest "requested ESP/ASR torque slow  / медленный запрос момента  ";
+CM_ SG_ 581 ABS_AYCInRegulation "Active state of AYC function
+Признак вмешательства AYC";
+CM_ SG_ 581 ESP_for_TCM_Jatco_Shifting "Shift authorization (with 11B TCM shifting is always enabled) 
+Fixed to 11B.
+";
+CM_ SG_ 581 ESP_TCS_AMRInregulation_for_TCM "Signal Copy of AMR_in_Regulation";
+CM_ SG_ 581 ABS_TCSMalfunction "Malfunction of TCS
+Неисправность TCS";
+CM_ SG_ 581 ABS_TCS_BMRInRegulation "Active state of TCS_BMR function
+Признак вмешательства TCS_BMR";
+CM_ SG_ 581 ABS_TCS_AMRInRegulation "Active state of TCS_AMR function
+Признак вмешательства TCS_AMR";
+CM_ SG_ 581 ABS_ESPPassiveSts "ESP in passive mode.
+Выключенное состояние ESP";
+CM_ SG_ 581 ABS_DTCInRegulation "Active state of DTC function
+Признак вмешательства DTC";
+CM_ SG_ 581 ABS_ESPInRegulation "Active state of ESP function
+Признак вмешательства ESP";
+CM_ SG_ 581 ABS_ESPMalfunction "Malfunction of ESP
+Неисправность ESP";
+CM_ SG_ 386 ECM_VirtualAcceleratorAngle "Throttle opening rate signal / Степень открытия дроссельной заслонки";
+CM_ SG_ 352 ECM_TargetEngineTorque "Target (driver requested) engine torque excluding torque down request from AT or ESP  / Целевой  момент двигателя (запрос водителя) 
+исключая запрос на понижение момента от AT и ESP.";
+CM_ SG_ 352 ECM_PowertrainSetpointCpl "Ergonomic pedal position (Inverted value)  /  Эргономическая позиция педали (инверсное значение)";
+CM_ SG_ 352 ECM_PowertrainSetpoint "Ergonomic pedal position / Эргономическая позиция педали";
+CM_ SG_ 352 ECM_EstimatedEngineTorque "Estimated engine torque excluding torque down request from AT or ESP 
+/ Оценочный  момент двигателя, исключая запрос на понижение момента от AT и ESP.
+";
+CM_ SG_ 384 ECM_MaxAchievableTorque "Maximum achievable torque / Максимально достижимый момент
+";
+CM_ SG_ 384 ECM_MeanEffectiveTorque "Estimated value of engine output torque / Оценочное значение выходного момента двигателя";
+CM_ SG_ 384 ECM_EngineSpeedRPM "Engine output shaft rotation speed  /
+Частота вращения коленвала";
+BA_DEF_ EV_  "GenEnvAutoGenCtrl" ENUM  "No","Yes";
+BA_DEF_ EV_  "GenEnvMsgOffset" INT 0 999999999;
+BA_DEF_ EV_  "GenEnvMsgName" STRING ;
+BA_DEF_ EV_  "GenEnvControlType" ENUM  "NoControl","SliderHoriz","SliderVert","PushButton","Edit","BitmapSwitch";
+BA_DEF_ SG_  "GenSigReceiveSetting" STRING ;
+BA_DEF_ SG_  "GenSigPreSetting" STRING ;
+BA_DEF_ SG_  "GenSigPreIfSetting" STRING ;
+BA_DEF_ SG_  "GenSigPostSetting" STRING ;
+BA_DEF_ SG_  "GenSigPostIfSetting" STRING ;
+BA_DEF_ SG_  "GenSigEVName" STRING ;
+BA_DEF_ SG_  "GenSigEnvVarType" ENUM  "int","float","undef";
+BA_DEF_ SG_  "GenSigConditionalSend" STRING ;
+BA_DEF_ SG_  "GenSigAutoGenSnd" ENUM  "No","Yes";
+BA_DEF_ SG_  "GenSigAutoGenDsp" ENUM  "No","Yes";
+BA_DEF_ SG_  "GenSigAssignSetting" STRING ;
+BA_DEF_ SG_  "GenSigAltSetting" STRING ;
+BA_DEF_ SG_  "GenSigStartValue" FLOAT 0 100000000000;
+BA_DEF_ SG_  "GenSigSendType" ENUM  "cyclic","onWritre","onWrtieWithRepetition","onChange","onChangeWithRepetition","ifActive","ifActiveWithRepetition","NoSigSend";
+BA_DEF_ SG_  "GenSigInactiveValue" INT 0 100000;
+BA_DEF_ SG_  "NWM-WakeupAllowed" ENUM  "No","Yes";
+BA_DEF_ BO_  "GenMsgPreSetting" STRING ;
+BA_DEF_ BO_  "GenMsgPreIfSetting" STRING ;
+BA_DEF_ BO_  "GenMsgPostSetting" STRING ;
+BA_DEF_ BO_  "GenMsgPostIfSetting" STRING ;
+BA_DEF_ BO_  "GenMsgEVName" STRING ;
+BA_DEF_ BO_  "GenMsgConditionalSend" STRING ;
+BA_DEF_ BO_  "GenMsgAutoGenSnd" ENUM  "No","Yes";
+BA_DEF_ BO_  "GenMsgAutoGenDsp" ENUM  "No","Yes";
+BA_DEF_ BO_  "GenMsgAltSetting" STRING ;
+BA_DEF_ BO_  "GenMsgSendType" ENUM  "cyclic","spontaneous","cyclicIfActive","spontaneousWithDelay","cyclicAndSpontaneous","cyclicAndSpontaneousWithDelay","spontaneousWithRepetition","cyclicIfActiveAndSpontaneousWD","noMsgSend";
+BA_DEF_ BO_  "GenMsgNrOfRepetitions" INT 1 999999;
+BA_DEF_ BO_  "GenMsgDelayTime" INT 1 1000;
+BA_DEF_ BO_  "GenMsgCycleTime" INT 2 50000;
+BA_DEF_ BO_  "NmMessage" ENUM  "No","Yes";
+BA_DEF_ BO_  "GenMsgILSupport" ENUM  "No","Yes";
+BA_DEF_ BO_  "GenMsgStartDelayTime" INT 0 65535;
+BA_DEF_ BO_  "GenMsgCycleTimeFast" INT 0 50000;
+BA_DEF_ BO_  "GenMsgNrOfRepetition" INT 0 999999;
+BA_DEF_ BU_  "GenNodAutoGenSnd" ENUM  "No","Yes";
+BA_DEF_ BU_  "NodeLayerModules" STRING ;
+BA_DEF_ BU_  "NmNode" ENUM  "No","Yes";
+BA_DEF_ BU_  "GenNodSleepTime" INT 0 1000000;
+BA_DEF_ BU_  "NmStationAddress" HEX 0 0;
+BA_DEF_ BU_  "ILUsed" ENUM  "No","Yes";
+BA_DEF_ BU_  "ECU" STRING ;
+BA_DEF_ BU_  "CANoeJitterMax" INT 0 0;
+BA_DEF_ BU_  "CANoeJitterMin" INT 0 0;
+BA_DEF_ BU_  "CANoeDrift" INT 0 0;
+BA_DEF_ BU_  "CANoeStartDelay" INT 0 0;
+BA_DEF_  "GenEnvVarPrefix" STRING ;
+BA_DEF_  "GenEnvVarEndingSnd" STRING ;
+BA_DEF_  "GenEnvVarEndingDsp" STRING ;
+BA_DEF_  "GenNWMTalkNM" STRING ;
+BA_DEF_  "GenNWMSleepTime" INT 0 1000000;
+BA_DEF_  "GenNWMGotoMode_BusSleep" STRING ;
+BA_DEF_  "GenNWMGotoMode_Awake" STRING ;
+BA_DEF_  "GenNWMApCanWakeUp" STRING ;
+BA_DEF_  "GenNWMApCanSleep" STRING ;
+BA_DEF_  "GenNWMApCanOn" STRING ;
+BA_DEF_  "GenNWMApCanOff" STRING ;
+BA_DEF_  "GenNWMApCanNormal" STRING ;
+BA_DEF_  "GenNWMApBusSleep" STRING ;
+BA_DEF_  "BusType" STRING ;
+BA_DEF_  "NmBaseAddress" HEX 1024 1087;
+BA_DEF_DEF_  "GenEnvAutoGenCtrl" "No";
+BA_DEF_DEF_  "GenEnvMsgOffset" 0;
+BA_DEF_DEF_  "GenEnvMsgName" "";
+BA_DEF_DEF_  "GenEnvControlType" "";
+BA_DEF_DEF_  "GenSigReceiveSetting" "";
+BA_DEF_DEF_  "GenSigPreSetting" "";
+BA_DEF_DEF_  "GenSigPreIfSetting" "";
+BA_DEF_DEF_  "GenSigPostSetting" "";
+BA_DEF_DEF_  "GenSigPostIfSetting" "";
+BA_DEF_DEF_  "GenSigEVName" "";
+BA_DEF_DEF_  "GenSigEnvVarType" "undef";
+BA_DEF_DEF_  "GenSigConditionalSend" "";
+BA_DEF_DEF_  "GenSigAutoGenSnd" "";
+BA_DEF_DEF_  "GenSigAutoGenDsp" "";
+BA_DEF_DEF_  "GenSigAssignSetting" "";
+BA_DEF_DEF_  "GenSigAltSetting" "";
+BA_DEF_DEF_  "GenSigStartValue" 0;
+BA_DEF_DEF_  "GenSigSendType" "cyclic";
+BA_DEF_DEF_  "GenSigInactiveValue" 0;
+BA_DEF_DEF_  "NWM-WakeupAllowed" "";
+BA_DEF_DEF_  "GenMsgPreSetting" "";
+BA_DEF_DEF_  "GenMsgPreIfSetting" "";
+BA_DEF_DEF_  "GenMsgPostSetting" "";
+BA_DEF_DEF_  "GenMsgPostIfSetting" "";
+BA_DEF_DEF_  "GenMsgEVName" "";
+BA_DEF_DEF_  "GenMsgConditionalSend" "";
+BA_DEF_DEF_  "GenMsgAutoGenSnd" "";
+BA_DEF_DEF_  "GenMsgAutoGenDsp" "";
+BA_DEF_DEF_  "GenMsgAltSetting" "";
+BA_DEF_DEF_  "GenMsgSendType" "cyclic";
+BA_DEF_DEF_  "GenMsgNrOfRepetitions" 1;
+BA_DEF_DEF_  "GenMsgDelayTime" 1;
+BA_DEF_DEF_  "GenMsgCycleTime" 100;
+BA_DEF_DEF_  "NmMessage" "No";
+BA_DEF_DEF_  "GenMsgILSupport" "No";
+BA_DEF_DEF_  "GenMsgStartDelayTime" 0;
+BA_DEF_DEF_  "GenMsgCycleTimeFast" 0;
+BA_DEF_DEF_  "GenMsgNrOfRepetition" 0;
+BA_DEF_DEF_  "GenNodAutoGenSnd" "";
+BA_DEF_DEF_  "NodeLayerModules" "";
+BA_DEF_DEF_  "NmNode" "No";
+BA_DEF_DEF_  "GenNodSleepTime" 0;
+BA_DEF_DEF_  "NmStationAddress" 0;
+BA_DEF_DEF_  "ILUsed" "No";
+BA_DEF_DEF_  "ECU" "";
+BA_DEF_DEF_  "CANoeJitterMax" 0;
+BA_DEF_DEF_  "CANoeJitterMin" 0;
+BA_DEF_DEF_  "CANoeDrift" 0;
+BA_DEF_DEF_  "CANoeStartDelay" 0;
+BA_DEF_DEF_  "GenEnvVarPrefix" "Env";
+BA_DEF_DEF_  "GenEnvVarEndingSnd" "_";
+BA_DEF_DEF_  "GenEnvVarEndingDsp" "Dsp_";
+BA_DEF_DEF_  "GenNWMTalkNM" "TalkNM()";
+BA_DEF_DEF_  "GenNWMSleepTime" 0;
+BA_DEF_DEF_  "GenNWMGotoMode_BusSleep" "GotoMode_BusSleep()";
+BA_DEF_DEF_  "GenNWMGotoMode_Awake" "GotoMode_Awake()";
+BA_DEF_DEF_  "GenNWMApCanWakeUp" "apCanWakeUp()";
+BA_DEF_DEF_  "GenNWMApCanSleep" "apCanSleep()";
+BA_DEF_DEF_  "GenNWMApCanOn" "apCanOn()";
+BA_DEF_DEF_  "GenNWMApCanOff" "apCanOff()";
+BA_DEF_DEF_  "GenNWMApCanNormal" "apCanNormal()";
+BA_DEF_DEF_  "GenNWMApBusSleep" "apBusSleep()";
+BA_DEF_DEF_  "BusType" "CAN";
+BA_DEF_DEF_  "NmBaseAddress" 1024;
+BA_ "GenMsgSendType" BO_ 1745 1;
+BA_ "GenMsgSendType" BO_ 1744 1;
+BA_ "GenMsgCycleTime" BO_ 372 10;
+BA_ "GenMsgAutoGenSnd" BO_ 852 1;
+BA_ "GenMsgAutoGenDsp" BO_ 852 1;
+BA_ "GenMsgSendType" BO_ 852 0;
+BA_ "GenMsgCycleTime" BO_ 852 40;
+BA_ "GenMsgSendType" BO_ 2027 1;
+BA_ "GenMsgSendType" BO_ 2019 1;
+BA_ "GenMsgSendType" BO_ 2015 1;
+BA_ "GenMsgAutoGenSnd" BO_ 481 1;
+BA_ "GenMsgAutoGenDsp" BO_ 481 1;
+BA_ "GenMsgSendType" BO_ 481 0;
+BA_ "GenMsgCycleTime" BO_ 481 10;
+BA_ "GenMsgILSupport" BO_ 481 1;
+BA_ "GenMsgAutoGenSnd" BO_ 613 1;
+BA_ "GenMsgAutoGenDsp" BO_ 613 1;
+BA_ "GenMsgSendType" BO_ 613 0;
+BA_ "GenMsgCycleTime" BO_ 613 20;
+BA_ "GenMsgILSupport" BO_ 613 1;
+BA_ "GenMsgAutoGenSnd" BO_ 608 1;
+BA_ "GenMsgAutoGenDsp" BO_ 608 1;
+BA_ "GenMsgSendType" BO_ 608 0;
+BA_ "GenMsgCycleTime" BO_ 608 20;
+BA_ "GenMsgILSupport" BO_ 608 1;
+BA_ "GenMsgAutoGenSnd" BO_ 636 1;
+BA_ "GenMsgAutoGenDsp" BO_ 636 1;
+BA_ "GenMsgSendType" BO_ 636 0;
+BA_ "GenMsgCycleTime" BO_ 636 20;
+BA_ "GenMsgILSupport" BO_ 636 1;
+BA_ "GenMsgAutoGenSnd" BO_ 0 1;
+BA_ "GenMsgAutoGenDsp" BO_ 0 1;
+BA_ "GenMsgSendType" BO_ 0 0;
+BA_ "GenMsgCycleTime" BO_ 0 10;
+BA_ "GenMsgILSupport" BO_ 0 1;
+BA_ "GenMsgAutoGenSnd" BO_ 1361 1;
+BA_ "GenMsgAutoGenDsp" BO_ 1361 1;
+BA_ "GenMsgSendType" BO_ 1361 4;
+BA_ "GenMsgILSupport" BO_ 1361 1;
+BA_ "GenMsgAutoGenSnd" BO_ 861 1;
+BA_ "GenMsgAutoGenDsp" BO_ 861 1;
+BA_ "GenMsgSendType" BO_ 861 4;
+BA_ "GenMsgILSupport" BO_ 861 1;
+BA_ "GenMsgAutoGenSnd" BO_ 734 1;
+BA_ "GenMsgAutoGenDsp" BO_ 734 1;
+BA_ "GenMsgSendType" BO_ 734 0;
+BA_ "GenMsgCycleTime" BO_ 734 10;
+BA_ "GenMsgILSupport" BO_ 734 1;
+BA_ "GenMsgAutoGenSnd" BO_ 581 1;
+BA_ "GenMsgAutoGenDsp" BO_ 581 1;
+BA_ "GenMsgSendType" BO_ 581 0;
+BA_ "GenMsgCycleTime" BO_ 581 20;
+BA_ "GenMsgILSupport" BO_ 581 1;
+BA_ "GenMsgAutoGenSnd" BO_ 386 1;
+BA_ "GenMsgAutoGenDsp" BO_ 386 1;
+BA_ "GenMsgSendType" BO_ 386 0;
+BA_ "GenMsgCycleTime" BO_ 386 10;
+BA_ "GenMsgILSupport" BO_ 386 1;
+BA_ "GenMsgAutoGenSnd" BO_ 352 1;
+BA_ "GenMsgAutoGenDsp" BO_ 352 1;
+BA_ "GenMsgSendType" BO_ 352 0;
+BA_ "GenMsgCycleTime" BO_ 352 10;
+BA_ "GenMsgILSupport" BO_ 352 1;
+BA_ "GenMsgAutoGenSnd" BO_ 384 1;
+BA_ "GenMsgAutoGenDsp" BO_ 384 1;
+BA_ "GenMsgSendType" BO_ 384 0;
+BA_ "GenMsgCycleTime" BO_ 384 10;
+BA_ "GenMsgILSupport" BO_ 384 1;
+BA_ "GenSigSendType" SG_ 852 ABS_Status_LC 0;
+BA_ "GenSigStartValue" SG_ 852 ABS_MuxDiagnosticOn 1;
+BA_ "GenSigSendType" SG_ 481 ESP_LWS_Signal_LC 0;
+BA_ "GenSigSendType" SG_ 481 ESP_LWS_Signal_CS 0;
+BA_ "GenSigSendType" SG_ 613 ABS_WS2_LC 0;
+BA_ "GenSigSendType" SG_ 608 ABS_WS1_LC 0;
+BA_ "GenSigSendType" SG_ 636 ABS_Speed_LC 0;
+BA_ "GenSigSendType" SG_ 636 ABS_VehicleSpeed 0;
+BA_ "GenSigSendType" SG_ 861 ECM_General_LC 0;
+BA_ "GenSigSendType" SG_ 581 ABS_ESPStatus_CS 0;
+BA_ "GenSigStartValue" SG_ 581 ESP_FastTorqueRequest 800;
+BA_ "GenSigSendType" SG_ 581 ABS_ESPStatus_LC 0;
+BA_ "GenSigStartValue" SG_ 581 ESP_MSRTorqueRequest 800;
+BA_ "GenSigStartValue" SG_ 581 ESP_SlowTorqueRequest 800;
+BA_ "GenSigStartValue" SG_ 581 ESP_for_TCM_Jatco_Shifting 0;
+BA_ "GenSigStartValue" SG_ 352 ECM_TargetEngineTorque 800;
+BA_ "GenSigStartValue" SG_ 352 ECM_EstimatedEngineTorque 800;
+BA_ "GenSigStartValue" SG_ 384 ECM_MaxAchievableTorque 800;
+BA_ "GenSigStartValue" SG_ 384 ECM_MeanEffectiveTorque 4094;
+BA_ "GenSigSendType" SG_ 384 ECM_EngineSpeedRPM 0;
+VAL_ 372 AMT_TransmRangeEngagedCur 15 "AT in limphome" 14 "not used" 13 "not used" 12 "not used" 11 "CVT in continuous mode" 10 "neutral or parking" 9 "reverse" 8 "8nd range" 7 "7nd range" 6 "6nd range" 5 "5nd range" 4 "4nd range" 3 "3nd range" 2 "2nd range" 1 "1st range" 0 "AT in limphome" ;
+VAL_ 372 AMT_TransmRangeEngagedTar 15 "AT in limphome" 14 "not used" 13 "not used" 12 "not used" 11 "CVT in continuous mode" 10 "neutral or parking" 9 "reverse" 8 "8nd range" 7 "7nd range" 6 "6nd range" 5 "5nd range" 4 "4nd range" 3 "3nd range" 2 "2nd range" 1 "1st range" 0 "declutched at rest" ;
+VAL_ 852 ABS_EmergencyBrake 1 "On" 0 "Off" ;
+VAL_ 852 ABS_EBDMalfunction 1 "Fault" 0 "Not fault" ;
+VAL_ 852 ABS_EBDInRegulation 1 "EBD in regulation" 0 "EBD not in regulation" ;
+VAL_ 852 ABS_MuxDiagnosticOn 1 "On" 0 "Off" ;
+VAL_ 852 ABS_BrakeSignal 3 "Invalid " 2 "Not used" 1 "Brake Activated" 0 "Brake not activated" ;
+VAL_ 852 ABS_ABSMalfunction 1 "Fault" 0 "Not fault" ;
+VAL_ 852 ABS_ABSInRegulation 1 "ABS in regulation" 0 "ABS not in regulation" ;
+VAL_ 481 ESP_LWS_TrimmingStatus 1 "trimmed" 0 "not trimmed" ;
+VAL_ 481 ESP_LWS_Speed 255 "Invalid Value" ;
+VAL_ 481 ESP_LWS_FailureFlag 1 "Valid" 0 "Invalid" ;
+VAL_ 481 ESP_LWS_CalibrationStatus 1 "calibrated" 0 "not calibrated" ;
+VAL_ 481 ESP_LWS_Angle 32767 "Invalid Value" ;
+VAL_ 613 ABS_WheelSpeedRRStatus 1 "Valid" 0 "Invalid" ;
+VAL_ 613 ABS_WheelSpeedRLStatus 1 "Valid" 0 "Invalid" ;
+VAL_ 608 ABS_WheelSpeedFRStatus 1 "Valid" 0 "Invalid" ;
+VAL_ 608 ABS_WheelSpeedFLStatus 1 "Valid" 0 "Invalid" ;
+VAL_ 636 ABS_VehicleSpeed 65535 "Signal Invalid" ;
+VAL_ 0 TCM_CurrentRangeEngaged 15 "AT in limphome" 14 "not used" 13 "not used" 12 "not used" 11 "CVT in continuous" 10 "Neutral or parking" 9 "Reverse" 8 "8 gear" 7 "7 gear" 6 "6 gear" 5 "5 gear" 4 "4 gear" 3 "3 gear" 2 "2 gear" 1 "1 gear" 0 "declutched at rest" ;
+VAL_ 0 TCM_TargetRangeEngaged 15 "AT in limphome" 14 "not used" 13 "not used" 12 "not used" 11 "CVT in continuous" 10 "Neutral or parking" 9 "Reverse" 8 "8 gear" 7 "7 gear" 6 "6 gear" 5 "5 gear" 4 "4 gear" 3 "3 gear" 2 "2 gear" 1 "1 gear" 0 "declutched at rest" ;
+VAL_ 1361 ECM_MuxDiagnosticOn 1 "On" 0 "Off" ;
+VAL_ 861 ECM_NeutralState 3 "Not used" 2 "Error" 1 "On" 0 "Off" ;
+VAL_ 861 ECM_BrakeSignal 3 "Invalid " 2 "Not used" 1 "Brake Activated" 0 "Brake not activated" ;
+VAL_ 734 COMBI_ReverseSts 1 "On" 0 "Off" ;
+VAL_ 734 COMBI_DifferentialBlocking 3 "switch fault" 2 "not used" 1 "blocked" 0 "not blocked" ;
+VAL_ 581 ESP_CutoffProhibitionReq 1 "Inhibit" 0 "Non Inhibit" ;
+VAL_ 581 ESP_FastTorqueRequest 4095 "Signal Invalid" ;
+VAL_ 581 ESP_MSRTorqueRequest 4095 "Signal Invalid" ;
+VAL_ 581 ESP_SlowTorqueRequest 4095 "Signal Invalid" ;
+VAL_ 581 ABS_AYCInRegulation 1 "On" 0 "Off" ;
+VAL_ 581 ESP_for_TCM_Jatco_Shifting 3 "Fixed value" 2 "Unavailable value" 1 "Unavailable value" 0 "Unavailable value" ;
+VAL_ 581 ESP_TCS_AMRInregulation_for_TCM 3 " Not Used (Can't be sent by TCS)" 2 "Not Used (Can't be sent by TCS)" 1 "AMR in Regulation" 0 "AMR not in Regulation" ;
+VAL_ 581 ABS_TCSMalfunction 1 "Fault" 0 "Not fault" ;
+VAL_ 581 ABS_TCS_BMRInRegulation 1 "In regulation" 0 "Not in regulation" ;
+VAL_ 581 ABS_TCS_AMRInRegulation 1 "In regulation" 0 "Not in regulation" ;
+VAL_ 581 ABS_ESPPassiveSts 1 "ESP passive (OFF)" 0 "ESP active" ;
+VAL_ 581 ABS_DTCInRegulation 1 "DTC in regulation" 0 "DTC not in regulation" ;
+VAL_ 581 ABS_ESPInRegulation 1 "On" 0 "Off" ;
+VAL_ 581 ABS_ESPMalfunction 1 "Fault" 0 "Not fault" ;
+VAL_ 352 ECM_EstimatedEngineTorque 4095 "Signal Invalid" ;
+VAL_ 384 ECM_MaxAchievableTorque 4095 "Signal Invalid" ;
+VAL_ 384 ECM_MeanEffectiveTorque 4095 "Signal Invalid" ;
+VAL_ 384 ECM_EngineSpeedRPM 65535 "Signal Invalid" ;

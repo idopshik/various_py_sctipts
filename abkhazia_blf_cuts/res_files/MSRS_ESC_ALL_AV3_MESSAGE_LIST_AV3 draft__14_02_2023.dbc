@@ -1,0 +1,401 @@
+VERSION ""
+
+
+NS_ :
+	NS_DESC_
+	CM_
+	BA_DEF_
+	BA_
+	VAL_
+	CAT_DEF_
+	CAT_
+	Filter
+	BA_DEF_DEF_
+	EV_DATA_
+	ENVVAR_DATA_
+	SGTYPE_
+	SGTYPE_VAL_
+	BA_DEF_SGTYPE_
+	BA_SGTYPE_
+	SIG_TYPE_REF_
+	SIG_GROUP_
+	SIG_VALTYPE_
+	SIGTYPE_VALTYPE_
+	BO_TX_BU_
+	BA_DEF_REL_
+	BA_REL_
+	BA_DEF_DEF_REL_
+	BU_SG_REL_
+	BU_EV_REL_
+	BU_BO_REL_
+	SG_MUL_VAL_
+
+BS_:
+
+BU_: ESC UBCM22 AT BCM CLUSTER CLUSTERBCM DTOOL DTOOL_V ECM ETC IVI PTCU TCU TCU_EXT EDL SWAS ECUxx
+
+
+BO_ 848 BCM_CANHS_R_04: 8 UBCM22
+ SG_ VehicleStateExtented : 3|4@0+ (1,0) [0|0] "" ESC
+ SG_ AbsoluteTimeSince1rstIgnition : 15|24@0+ (1,0) [0|1.677e+007] "mn" ESC
+ SG_ BrakeInfoStatus : 46|3@0+ (1,0) [0|0] "" ESC
+ SG_ GenericApplicativeDiagEnable : 43|2@0+ (1,0) [0|0] "" ESC
+
+BO_ 1373 BCM_CANHS_R_05: 8 UBCM22
+ SG_ RearGearEngaged : 13|2@0+ (1,0) [0|0] "" ESC
+ SG_ NeutralContact : 11|2@0+ (1,0) [0|0] "" ESC
+ SG_ ClutchSwitchMinimumTravel : 21|2@0+ (1,0) [0|0] "" ESC
+
+BO_ 1196 BCM_CANHS_R_08: 7 UBCM22
+ SG_ DriveModeRequest : 55|4@0+ (1,0) [0|0] "" ESC
+
+BO_ 578 BRAKE_CANHS_RNr_01: 8 ESC
+ SG_ ABSinRegulation : 7|1@0+ (1,0) [0|0] "" ECUxx
+ SG_ ABSMalfunction : 6|1@0+ (1,0) [0|0] "" ECUxx
+ SG_ ASRinRegulation : 5|1@0+ (1,0) [0|0] "" ECUxx
+ SG_ ASRMalfunction : 4|1@0+ (1,0) [0|0] "" ECUxx
+ SG_ HSAMalfunction : 3|1@0+ (1,0) [0|0] "" ECUxx
+ SG_ AYCinRegulation : 2|1@0+ (1,0) [0|0] "" ECUxx
+ SG_ AYCMalfunction : 1|1@0+ (1,0) [0|0] "" ECUxx
+ SG_ MSRinRegulation : 0|1@0+ (1,0) [0|0] "" ECUxx
+ SG_ MSRMalfunction : 15|1@0+ (1,0) [0|0] "" ECUxx
+ SG_ ESP_Clock : 14|4@0+ (1,0) [0|15] "" ECUxx
+ SG_ ESP_TorqueControlType : 10|3@0+ (1,0) [0|0] "" ECUxx
+ SG_ ASRDynamicTorqueRequest : 23|12@0+ (0.5,-400) [-400|1647] "Nm" ECUxx
+ SG_ ASRStaticTorqueRequest : 27|12@0+ (0.5,-400) [-400|1647] "Nm" ECUxx
+ SG_ MSRTorqueRequest : 47|12@0+ (0.5,-400) [-400|1647] "Nm" ECUxx
+ SG_ ShiftingAuthorization : 51|2@0+ (1,0) [0|0] "" ECUxx
+ SG_ HSA_ActivationState : 49|2@0+ (1,0) [0|0] "" ECUxx
+
+BO_ 666 BRAKE_CANHS_RNr_02: 8 ESC
+ SG_ WheelSpeed_F_R : 7|16@0+ (0.0417,0) [0|2730.5994] "rpm" ECUxx
+ SG_ WheelSpeed_F_L : 23|16@0+ (0.0417,0) [0|2730.5994] "rpm" ECUxx
+ SG_ VehicleSpeed : 39|16@0+ (0.01,0) [0|655.34] "km/h" ECUxx
+ SG_ VehicleSpeedClock : 51|4@0+ (1,0) [0|15] "" ECUxx
+ SG_ VehicleSpeedChecksum : 63|8@0+ (1,0) [0|255] "" ECUxx
+
+BO_ 668 BRAKE_CANHS_RNr_03: 8 ESC
+ SG_ WheelSpeed_R_L : 7|16@0+ (0.0417,0) [0|2730.5994] "rpm" ECUxx
+ SG_ WheelSpeed_R_R : 23|16@0+ (0.0417,0) [0|2730.5994] "rpm" ECUxx
+ SG_ FourWheelReferenceSpeed : 39|16@0+ (0.01,0) [0|655.34] "km/h" ECUxx
+ SG_ VehicleSpeed_CVT : 55|16@0+ (0.01,0) [0|655.34] "km/h" ECUxx
+
+BO_ 302 BRAKE_CANHS_RNr_04: 8 ESC
+ SG_ LongitudinalAccelerationProc : 7|12@0+ (0.001,-2.048) [-2.048|2.046] "g" ECUxx
+ SG_ TransversalAcceleration : 11|12@0+ (0.001,-2.048) [-2.048|2.046] "g" ECUxx
+ SG_ YawRate : 31|12@0+ (0.1,-204.7) [-204.7|204.7] "°/s" ECUxx
+
+BO_ 1495 BRAKE_CANHS_R_01: 8 ESC
+ SG_ VehicleSpeed : 7|16@0+ (0.01,0) [0|655.34] "km/h" ECUxx
+ SG_ DistanceTotalizer : 23|28@0+ (0.01,0) [0|2.6e+006] "km" ECUxx
+ SG_ HDC_StatusDisplay : 41|2@0+ (1,0) [0|0] "" ECUxx
+ SG_ AccurateOdometer : 53|5@0+ (4,0) [0|120] "cm" ECUxx
+ SG_ HDC_ActivationRefusedDisplay : 63|1@0+ (1,0) [0|0] "" ECUxx
+ SG_ HDC_ButtonStatus : 62|1@0+ (1,0) [0|0] "" ECUxx
+
+BO_ 850 BRAKE_CANHS_R_02: 6 ESC
+ SG_ ABS_WarningRequest : 7|2@0+ (1,0) [0|0] "" ECUxx
+ SG_ ESP_StopLampRequest : 5|2@0+ (1,0) [0|0] "" ECUxx
+ SG_ BrakeVacuumStatus : 1|2@0+ (1,0) [0|0] "" ECUxx
+ SG_ Idle_Stop_Brake_Hold_Function_Standby : 11|1@0+ (1,0) [0|0] "" ECUxx
+ SG_ BrakingPressure : 31|8@0+ (0.5,0) [0|126] "bar" ECUxx
+
+BO_ 695 BRAKE_CANHS_R_03: 5 ESC
+ SG_ ETC_RequestedTransferedTorque : 23|8@0+ (6,0) [0|1524] "Nm" ECUxx
+ SG_ NonDrivingWheelsStuckDetectionFlag : 33|2@0+ (1,0) [0|0] "" ECUxx
+
+BO_ 144 BRAKE_CANHS_R_06: 5 ESC
+ SG_ BrakingPressure_Fast : 7|8@0+ (0.5,0) [0|126] "bar" ECUxx
+ SG_ Clock : 19|4@0+ (1,0) [0|15] "" ECUxx
+ SG_ CRC : 31|8@0+ (1,0) [0|255] "" ECUxx
+ SG_ MastervacPressure : 39|4@0+ (5,0) [0|75] "kPa" ECUxx
+ SG_ MastervacPressureSensorNG : 35|2@0+ (1,0) [0|0] "" ECUxx
+
+BO_ 679 BRAKE_CANHS_R_07: 8 ESC
+ SG_ WheelSpeed_R_L_Copy : 7|16@0+ (0.0417,0) [0|2730.5994] "rpm" ECUxx
+ SG_ WheelSpeed_R_R_Copy : 23|16@0+ (0.0417,0) [0|2730.5994] "rpm" ECUxx
+ SG_ BRAKE_CANHS_R_07_Clock : 51|4@0+ (1,0) [0|15] "" ECUxx
+ SG_ BRAKE_CANHS_R_07_Checksum : 63|8@0+ (1,0) [0|255] "" ECUxx
+
+BO_ 855 BRAKE_WHEEL_TOP_RN1: 7 ESC
+ SG_ WheelTop_F_L_ : 6|7@0+ (1,0) [0|96] "top" ECUxx
+ SG_ WheelTop_F_R : 14|7@0+ (1,0) [0|96] "top" ECUxx
+ SG_ WheelTop_R_L_ : 22|7@0+ (1,0) [0|96] "top" ECUxx
+ SG_ WheelTop_R_R_ : 30|7@0+ (1,0) [0|96] "top" ECUxx
+ SG_ WheelDirection_L_ : 39|2@0+ (1,0) [0|0] "" ECUxx
+ SG_ WheelDirection_R : 37|2@0+ (1,0) [0|0] "" ECUxx
+
+BO_ 1888 BRAKE_to_DTOOL: 8 ESC
+ SG_ Brake_to_DTOOL : 7|64@0+ (1,0) [0|0] "" ECUxx
+
+BO_ 1272 CLUSTER_CANHS_RNr_01: 8 CLUSTER
+ SG_ HandBrakeSwitch : 3|2@0+ (1,0) [0|0] "" ESC
+
+BO_ 1489 CLUSTER_CANHS_R_02: 3 CLUSTER
+ SG_ MemorizedDistanceTotalizer : 7|24@0+ (1,0) [0|1.6e+007] "km" ESC
+
+BO_ 951 CLUSTER_CANHS_R_04: 8 CLUSTER
+ SG_ ExternalTemp : 7|8@0+ (1,-40) [-40|214] "°C" ESC
+ SG_ NightRheostatedLightMaxPercent : 15|8@0+ (0.4,0) [0|100] "%" ESC
+ SG_ DayNightStatusForBacklights : 23|1@0+ (1,0) [0|0] "" ESC
+ SG_ TPMS_ResetDriverRequest : 47|2@0+ (1,0) [0|0] "" ESC
+
+BO_ 1856 DTOOL_to_BRAKE: 8 DTOOL
+ SG_ DTOOL_to_Brake : 7|64@0+ (1,0) [0|0] "" ESC
+
+BO_ 2564435441 DTOOL_to_VDCextd: 8 DTOOL
+ SG_ DTOOL_to_VDCextd : 7|64@0+ (1,0) [0|0] "" ESC
+
+BO_ 502 ECM_CANHS_RNr_01: 8 ECM
+ SG_ EngineStatus_R : 13|2@0+ (1,0) [0|0] "" ESC
+ SG_ EngineStopRequestOrigine : 11|4@0+ (1,0) [0|0] "" ESC
+
+BO_ 1053 ECM_CANHS_R_07: 4 ECM
+ SG_ AutoStartAuthorization : 1|2@0+ (1,0) [0|0] "" ESC
+ SG_ StopAutoPhase : 11|3@0+ (1,0) [0|0] "" ESC
+ SG_ Maintenance_Mode_Status : 29|2@0+ (1,0) [0|0] "" ESC
+ SG_ Idle_Stop_Brake_Hold_Function_Request : 26|1@0+ (1,0) [0|0] "" ESC
+
+BO_ 426 ETC_CANHS_R_01: 5 ETC
+ SG_ ETC_Clock : 7|4@0+ (1,0) [0|15] "" ESC
+ SG_ EstimatedFinalETCClutchTorque : 22|8@0+ (10,0) [0|2540] "Nm" ESC
+ SG_ ETCinFailure : 30|1@0+ (1,0) [0|0] "" ESC
+ SG_ ETC_InternalOperationMode : 29|2@0+ (1,0) [0|0] "" ESC
+ SG_ ETCModeCustomerRequest : 27|2@0+ (1,0) [0|0] "" ESC
+
+BO_ 1638 MMI_BRAKE_CANHS_RNr_01: 4 ESC
+ SG_ ESPInRegulationDisplayRequest : 7|1@0+ (1,0) [0|0] "" ECUxx
+ SG_ ESPInDefaultDisplayRequest : 6|1@0+ (1,0) [0|0] "" ECUxx
+ SG_ ESPActivationStateForDisplay : 5|1@0+ (1,0) [0|0] "" ECUxx
+ SG_ ASRActivationStateForDisplay : 4|1@0+ (1,0) [0|0] "" ECUxx
+ SG_ ABSInDefaultDisplayRequest : 3|1@0+ (1,0) [0|0] "" ECUxx
+ SG_ EBVInDefaultDisplayRequest : 1|1@0+ (1,0) [0|0] "" ECUxx
+ SG_ EmergencyBrakingFailure : 0|1@0+ (1,0) [0|0] "" ECUxx
+ SG_ ABS_ESPLampsAutoCheck : 15|1@0+ (1,0) [0|0] "" ECUxx
+ SG_ ABSorESPInCalibratingDiag : 9|1@0+ (1,0) [0|0] "" ECUxx
+ SG_ ABSorESPToBeCalibrated : 8|1@0+ (1,0) [0|0] "" ECUxx
+ SG_ HSAFailureDisplayRequest : 16|1@0+ (1,0) [0|0] "" ECUxx
+ SG_ ExtendedGripModeDisplayRequest : 30|3@0+ (1,0) [0|0] "" ECUxx
+ SG_ TPW_Status : 27|2@0+ (1,0) [0|0] "" ECUxx
+ SG_ TPW_AckResetDriver : 25|2@0+ (1,0) [0|0] "" ECUxx
+
+BO_ 1669 MMI_BRAKE_CANHS_R_01: 5 ESC
+ SG_ LongitudinalTilt_MMI : 7|7@0+ (1,-60) [-60|60] "°" ECUxx
+ SG_ LateralTilt_MMI : 15|7@0+ (1,-60) [-60|60] "°" ECUxx
+ SG_ FrontWheelAngle_MMI : 23|7@0+ (1,-60) [-60|60] "°" ECUxx
+ SG_ WheelTorque_FL_MMI : 31|2@0+ (1,0) [0|0] "" ECUxx
+ SG_ WheelTorque_FR_MMI : 29|2@0+ (1,0) [0|0] "" ECUxx
+ SG_ WheelTorque_RL_MMI : 27|2@0+ (1,0) [0|0] "" ECUxx
+ SG_ WheelTorque_RR_MMI : 25|2@0+ (1,0) [0|0] "" ECUxx
+ SG_ FriendlyDriver_MMI : 39|2@0+ (1,0) [0|0] "" ECUxx
+
+BO_ 1642 MMI_ECM_CANHS_RNr_01: 8 ECM
+ SG_ CruiseControlStatusDisplay : 2|3@0+ (1,0) [0|0] "" ESC
+
+BO_ 1114 MULTIDRIVE_SELECTION_R1: 4 IVI
+ SG_ MultiDrive_Mode_ESC : 21|3@0+ (1,0) [0|0] "" ESC
+
+BO_ 198 SWA_CANHS_RNr_01: 8 ESC
+ SG_ SteeringWheelAngle : 7|16@0+ (0.1,-3276.7) [-3276.7|3276.7] "°" ECUxx
+ SG_ SteeringWheelRotationSpeed : 23|16@0+ (0.1,-3276.7) [-3276.7|3276.7] "°/s" ECUxx
+ SG_ SteeringWheelAngle_Offset : 39|16@0+ (0.1,-3276.7) [-3276.7|3276.7] "°" ECUxx
+ SG_ SwaSensorInternalStatus : 55|3@0+ (1,0) [0|0] "" ECUxx
+ SG_ SwaClock : 52|4@0+ (1,0) [0|15] "" ECUxx
+ SG_ SwaChecksum : 63|8@0+ (1,0) [0|255] "" ECUxx
+
+BO_ 378 TORQUE_AT_CANHS_RNr_01: 8 AT
+ SG_ TransmRangeEngaged_Target : 31|4@0+ (1,0) [0|0] "" ESC
+ SG_ TransmRangeEngaged_Current : 27|4@0+ (1,0) [0|0] "" ESC
+ SG_ AT_TorqueControlType : 39|3@0+ (1,0) [0|0] "" ESC
+ SG_ TorqueConverterState : 47|2@0+ (1,0) [0|0] "" ESC
+ SG_ AT_CRC : 63|8@0+ (1,0) [ 0|255] "" ESC
+
+BO_ 390 TORQUE_ECM_CANHS_RNr_01: 7 ECM
+ SG_ EngineRPM : 7|16@0+ (0.125,0) [0|8191.75] "rpm" ESC
+ SG_ MeanEffectiveTorque : 23|12@0+ (0.5,-400) [-400|1647] "Nm" ESC
+ SG_ RequestedTorqueAfterProc : 27|12@0+ (0.5,-400) [-400|1647] "Nm" ESC
+ SG_ RawSensor : 47|10@0+ (0.125,0) [0|125] "%" ESC
+ SG_ ASR_MSRAcknowledgement : 53|1@0+ (1,0) [0|0] "" ESC
+ SG_ ECM_TorqueRequestStatus : 52|2@0+ (1,0) [0|0] "" ESC
+
+BO_ 394 TORQUE_ECM_CANHS_RNr_02: 6 ECM
+ SG_ PowerTrainSetPoint : 23|10@0+ (0.125,0) [0|125] "%" ESC
+ SG_ FrictionTorque : 28|12@0+ (0.5,-400) [-400|1647] "Nm" ESC
+
+BO_ 2564485421 VDC_to_DTOOLextd: 8 ESC
+ SG_ VDC_to_DTOOLextd : 7|64@0+ (1,0) [0|0] "" ECUxx
+
+BO_ 1318 BRAKE_CANHS_A_01: 4 ESC
+ SG_ SPORT_Mode_BrakeStatus : 7|2@0+ (1,0) [0|0] "" ECUxx
+ SG_ EDL_Brake_Status : 15|4@0+ (1,0) [0|0] "" ECUxx
+ SG_ EPB_status : 11|4@0+ (1,0) [0|0] "" ECUxx
+ SG_ AUTOHOLD_status : 23|4@0+ (1,0) [0|0] "" ECUxx
+
+BO_ 1314 ECM_CANHS_A_01: 8 ECM
+ SG_ SPORT_Mode_Status : 6|3@0+ (1,0) [0|0] "" ESC
+ SG_ ECMClock : 3|4@0+ (1,0) [0|0] "" ESC
+ SG_ EDL_ECM_Status : 15|4@0+ (1,0) [0|0] "" ESC
+ SG_ ECMChechsum : 63|8@0+ (1,0) [0|0] "" ESC
+
+BO_ 1312 EDL_CANHS_A_01: 4 EDL
+ SG_ EDL_Status : 7|4@0+ (1,0) [0|0] "" ESC
+ SG_ EDLClock : 3|4@0+ (1,0) [0|0] "" ESC
+ SG_ EDLChechsum : 31|8@0+ (1,0) [0|0] "" ESC
+
+BO_TX_BU_ 848 : UBCM22,BCM,CLUSTERBCM;
+BO_TX_BU_ 1373 : UBCM22,BCM,CLUSTERBCM;
+BO_TX_BU_ 1272 : CLUSTER,CLUSTERBCM;
+BO_TX_BU_ 1489 : CLUSTER,CLUSTERBCM;
+BO_TX_BU_ 951 : CLUSTER,CLUSTERBCM;
+BO_TX_BU_ 1856 : DTOOL,DTOOL_V,TCU,TCU_EXT;
+BO_TX_BU_ 2564435441 : DTOOL,DTOOL_V,TCU,TCU_EXT;
+BO_TX_BU_ 502 : ECM,PTCU;
+BO_TX_BU_ 1053 : ECM,PTCU;
+BO_TX_BU_ 378 : AT,PTCU;
+BO_TX_BU_ 390 : ECM,PTCU;
+
+
+CM_ "";
+BA_DEF_ BO_ "CycleTime" INT 0 10000;
+BA_DEF_ BO_ "FrameType" STRING;
+BA_DEF_DEF_ "CycleTime" 100;
+BA_DEF_DEF_ "FrameType" "-";
+BA_ "CycleTime" BO_ 848 100;
+BA_ "FrameType" BO_ 848 "Periodic and Event";
+BA_ "CycleTime" BO_ 1373 100;
+BA_ "FrameType" BO_ 1373 "Periodic and Event";
+BA_ "CycleTime" BO_ 1196 100;
+BA_ "FrameType" BO_ 1196 "Periodic and Event";
+BA_ "CycleTime" BO_ 578 20;
+BA_ "FrameType" BO_ 578 "Periodic";
+BA_ "CycleTime" BO_ 666 20;
+BA_ "FrameType" BO_ 666 "Periodic";
+BA_ "CycleTime" BO_ 668 20;
+BA_ "FrameType" BO_ 668 "Periodic";
+BA_ "CycleTime" BO_ 302 10;
+BA_ "FrameType" BO_ 302 "Periodic";
+BA_ "CycleTime" BO_ 1495 100;
+BA_ "FrameType" BO_ 1495 "Periodic";
+BA_ "CycleTime" BO_ 850 40;
+BA_ "FrameType" BO_ 850 "Periodic";
+BA_ "CycleTime" BO_ 695 20;
+BA_ "FrameType" BO_ 695 "Periodic";
+BA_ "CycleTime" BO_ 144 10;
+BA_ "FrameType" BO_ 144 "Periodic";
+BA_ "CycleTime" BO_ 679 20;
+BA_ "FrameType" BO_ 679 "Periodic";
+BA_ "CycleTime" BO_ 855 20;
+BA_ "FrameType" BO_ 855 "Periodic";
+BA_ "FrameType" BO_ 1888 "Diagnostic";
+BA_ "CycleTime" BO_ 1272 100;
+BA_ "FrameType" BO_ 1272 "Periodic";
+BA_ "FrameType" BO_ 1489 "Event";
+BA_ "CycleTime" BO_ 951 100;
+BA_ "FrameType" BO_ 951 "Periodic and Event";
+BA_ "FrameType" BO_ 1856 "Diagnostic";
+BA_ "FrameType" BO_ 2564435441 "Diagnostic";
+BA_ "CycleTime" BO_ 502 10;
+BA_ "FrameType" BO_ 502 "Periodic";
+BA_ "CycleTime" BO_ 1053 100;
+BA_ "FrameType" BO_ 1053 "Periodic";
+BA_ "CycleTime" BO_ 426 10;
+BA_ "FrameType" BO_ 426 "Periodic";
+BA_ "CycleTime" BO_ 1638 100;
+BA_ "FrameType" BO_ 1638 "Periodic";
+BA_ "CycleTime" BO_ 1669 500;
+BA_ "FrameType" BO_ 1669 "Periodic and Event";
+BA_ "CycleTime" BO_ 1642 100;
+BA_ "FrameType" BO_ 1642 "Periodic";
+BA_ "CycleTime" BO_ 1114 1000;
+BA_ "FrameType" BO_ 1114 "Periodic and Event";
+BA_ "CycleTime" BO_ 198 10;
+BA_ "FrameType" BO_ 198 "Periodic";
+BA_ "CycleTime" BO_ 378 10;
+BA_ "FrameType" BO_ 378 "Periodic";
+BA_ "CycleTime" BO_ 390 10;
+BA_ "FrameType" BO_ 390 "Periodic";
+BA_ "CycleTime" BO_ 394 10;
+BA_ "FrameType" BO_ 394 "Periodic";
+BA_ "FrameType" BO_ 2564485421 "Diagnostic";
+BA_ "CycleTime" BO_ 1318 100;
+BA_ "FrameType" BO_ 1318 "Periodic";
+BA_ "CycleTime" BO_ 1314 100;
+BA_ "FrameType" BO_ 1314 "Periodic";
+BA_ "CycleTime" BO_ 1312 100;
+BA_ "FrameType" BO_ 1312 "Periodic";
+VAL_ 848 VehicleStateExtented 0 "Sleeping " 1 "Technical Wakeup" 2 "CutOffPending" 3 "BatTempoLevel" 4 "AccessoryLevel" 5 "IgnitionLevel" 6 "StartingInProgress" 7 "EngineRunning" 8 "AutoStart" 9 "EngineSystemStop" 15 "UnvailableValue";
+VAL_ 848 BrakeInfoStatus 1 "Brake pedal not pressed" 2 "Brake pedal pressed" 4 "Brake pedal confirmed pressed" 7 "unavailable";
+VAL_ 848 GenericApplicativeDiagEnable 0 "Only faults reports and alerts that MUST remain active during cranking or sleeping periods are enabled" 1 "All  faults reports and alerts not related to APC power level are enabled" 2 "All  faults reports and alerts are enabled" 3 "Unavailable";
+VAL_ 1373 RearGearEngaged 0 "Not used" 1 "Rear Gear not Engaged" 2 "Rear Gear Engaged" 3 "unavailable";
+VAL_ 1373 NeutralContact 0 "not used" 1 "neutral contact not reached" 2 "neutral contact reached" 3 "unavailable";
+VAL_ 1373 ClutchSwitchMinimumTravel 0 "Not used" 1 "Clutch pedal not pressed                               " 2 "Clutch pedal pressed at minimum" 3 "Unavailable";
+VAL_ 1196 DriveModeRequest 0 "Normal mode requested" 1 "Eco mode requested" 2 "Sport mode requested" 3 "Not used" 4 "Not used" 5 "Not used                          " 6 "Not used" 7 "Not used" 8 "Not used" 9 "Not used                          " 10 "Not used" 11 "Not used" 12 "Not used" 13 "Not used                          " 14 "Not used" 15 "Unavailable";
+VAL_ 578 ABSinRegulation 0 "no ABS regulation" 1 "ABS in regulation";
+VAL_ 578 ABSMalfunction 0 "no ABS malfunction" 1 "ABS malfunction";
+VAL_ 578 ASRinRegulation 0 "no ASR regulation" 1 "ASR in regulation";
+VAL_ 578 ASRMalfunction 0 "No ASR malfunction" 1 "ASR malfunction";
+VAL_ 578 HSAMalfunction 0 "no HSA malfunction" 1 "HSA malfunction";
+VAL_ 578 AYCinRegulation 0 "no AYC regulation" 1 "AYC in regulation";
+VAL_ 578 AYCMalfunction 0 "no AYC malfunction" 1 "AYC malfunction";
+VAL_ 578 MSRinRegulation 0 "no MSR regulation" 1 "MSR in regulation";
+VAL_ 578 MSRMalfunction 0 "no MSR malfunction" 1 "MSR malfunction";
+VAL_ 578 ESP_TorqueControlType 0 "no torque request" 5 "ASR torque request (decrease torque request)" 6 "MSR torque request (increase torque request)";
+VAL_ 578 ShiftingAuthorization 0 "gear shift forbidden" 1 "shift down authorized" 2 "shift up authorized" 3 "shift up or down authorized";
+VAL_ 578 HSA_ActivationState 0 "Unavailable" 1 "HSA  not activated" 2 "HSA  activated" 3 "not Used";
+VAL_ 1495 HDC_StatusDisplay 0 "HDC Not activated" 1 "HDC Activated" 2 "HDC in Control" 3 "HDC Failure";
+VAL_ 1495 HDC_ActivationRefusedDisplay 0 "HDC_ActivationRefused not displayed" 1 "HDC_ActivationRefused displayed";
+VAL_ 1495 HDC_ButtonStatus 0 "HDC button pushed" 1 "HDC button not pushed";
+VAL_ 850 ABS_WarningRequest 0 "reserved" 1 "warning lamps off request" 2 "warning lamps on request" 3 "reserved";
+VAL_ 850 ESP_StopLampRequest 0 "Reserved" 1 "Stops lamps off request" 2 "Stop lamps on request" 3 "Reserved";
+VAL_ 850 BrakeVacuumStatus 0 "Sensor or Sensorless Strategy Unavailable" 1 "Vacuum level above minimum level" 2 "Vacuum level below minimum level" 3 "Unavailable";
+VAL_ 850 Idle_Stop_Brake_Hold_Function_Standby 0 "IS brake hold permit " 1 "IS brake hold not permit";
+VAL_ 695 NonDrivingWheelsStuckDetectionFlag 0 "Unavailable" 1 "Roller bench not detected" 2 "Not used" 3 "Roller bench detected";
+VAL_ 144 MastervacPressureSensorNG 0 "Mastervac Pressure Sensor is OK" 1 "Mastervac Pressure Sensor is open circuit or short to GND " 2 "Mastervac Pressure Sensor is short to power supply circuit diagnosis NG" 3 "Mastervac Pressure Sensor is plausibility check diagnosis or power supply voltage";
+VAL_ 855 WheelDirection_L_ 0 "No movement detected yet" 1 "Non Drive Wheel Front Direction" 2 "Non Drive Wheel Rear Direction" 3 "Unavalilable";
+VAL_ 855 WheelDirection_R 0 "No movement detected yet" 1 "Non Drive Wheel Front Direction" 2 "Non Drive Wheel Rear Direction" 3 "Unavalilable";
+VAL_ 1272 HandBrakeSwitch 0 "not used" 1 "parking brake not applied" 2 "parking brake applied" 3 "unavailable";
+VAL_ 951 DayNightStatusForBacklights 0 "Day time according light level sensor and no light request from driver" 1 "Night time according to light level sensor or light requested by driver";
+VAL_ 951 TPMS_ResetDriverRequest 0 "Unvailable Value" 1 "TPMS Reset driver NOT requested " 2 "TPMS Reset driver requested " 3 "Not Used";
+VAL_ 502 EngineStatus_R 0 "engine stopped " 1 "Reserved" 2 " independant  running engine  " 3 "running engine-driven";
+VAL_ 502 EngineStopRequestOrigine 0 "No engine stop request (initial stop or independant engine running)";
+VAL_ 1053 AutoStartAuthorization 0 "Unavailable" 1 "Stop Start Authorized" 2 "Stop Start Not autjorized" 3 "Not Used";
+VAL_ 1053 StopAutoPhase 0 "NotInAutoPhase" 1 "AutoStart" 2 "IdleStop" 3 "AutophaseAborted" 4 "Not Used" 5 "Not Used" 6 "Not Used" 7 "Unavailable";
+VAL_ 1053 Maintenance_Mode_Status 0 "not used" 1 "no request" 2 "request" 3 "unavailable";
+VAL_ 1053 Idle_Stop_Brake_Hold_Function_Request 0 "No request" 1 "Brake Hold request by IS";
+VAL_ 426 ETCinFailure 0 "ETC not in failure" 1 "ETC in failure";
+VAL_ 426 ETC_InternalOperationMode 0 "automatic selection mode" 1 "fixed 4WD mode" 2 "fixed 2WD mode" 3 "unavailable";
+VAL_ 426 ETCModeCustomerRequest 0 "AutoMode Requested By Customer" 1 "LockMode Requested By Customer" 2 "ForTwoMode Requested By Customer" 3 "Unvailable Value";
+VAL_ 1638 ESPInRegulationDisplayRequest 0 "No ESP in regulation display request" 1 "ESP in regulation display requested";
+VAL_ 1638 ESPInDefaultDisplayRequest 0 "No ESP in failure display request" 1 "ESP in failure display requested";
+VAL_ 1638 ESPActivationStateForDisplay 0 "ESP desactivated " 1 "ESP activated";
+VAL_ 1638 ASRActivationStateForDisplay 0 " ASR de-activated" 1 "ASR activated";
+VAL_ 1638 ABSInDefaultDisplayRequest 0 " No ABS in failure display requested" 1 "ABS in failure display requested";
+VAL_ 1638 EBVInDefaultDisplayRequest 0 "No EBV in failure display request" 1 "EBV in failure display request";
+VAL_ 1638 EmergencyBrakingFailure 0 "No emergency braking failure" 1 "Emergency braking failure";
+VAL_ 1638 ABS_ESPLampsAutoCheck 0 "no auto-check in progress" 1 "auto-check in progress";
+VAL_ 1638 ABSorESPInCalibratingDiag 0 "No ABS or ESP in calibrating diagnosis session  warning : Nominal Situation or Diagnosis Reading Session" 1 "ABS or ESP in Calibrating Diagnosis  Session warning";
+VAL_ 1638 ABSorESPToBeCalibrated 0 "No warning : ECU operational" 1 "ECU to be calibrated warning";
+VAL_ 1638 HSAFailureDisplayRequest 0 "No HSA failure display requested" 1 "HSA failure display requested";
+VAL_ 1638 ExtendedGripModeDisplayRequest 0 "ExtendedGrip not available (No display)" 1 "mode 1" 2 "mode 2" 3 "mode 3" 4 "mode 4" 5 "mode 5" 6 "not used" 7 "not used";
+VAL_ 1638 TPW_Status 0 "System OK" 1 "Tyre under inflated" 2 "Failure" 3 "TPW not avalaible";
+VAL_ 1638 TPW_AckResetDriver 0 "Unvailable Value" 1 "Reset driver NOT  taken into account" 2 "Reset driver taken into account" 3 "Not Used";
+VAL_ 1669 WheelTorque_FL_MMI 0 "No Display" 1 "Null Torque" 2 "Negative Torque" 3 "Positive Torque";
+VAL_ 1669 WheelTorque_FR_MMI 0 "No Display" 1 "Null Torque" 2 "Negative Torque" 3 "Positive Torque";
+VAL_ 1669 WheelTorque_RL_MMI 0 "No Display" 1 "Null Torque" 2 "Negative Torque" 3 "Positive Torque";
+VAL_ 1669 WheelTorque_RR_MMI 0 "No Display" 1 "Null Torque" 2 "Negative Torque" 3 "Positive Torque";
+VAL_ 1669 FriendlyDriver_MMI 0 "No Display" 1 "Bad Driving" 2 "Average Driving" 3 "Good Driving";
+VAL_ 1642 CruiseControlStatusDisplay 0 "Cruise Control (CC) and Speed Limit (SL) OFF" 1 "SL active" 2 "SL on and (awaiting or suspended)" 3 "SL requested and in failure" 4 "CC active" 5 "CC ON and ( awaiting  or suspended)" 6 "CC requested and in failure" 7 "unavailable";
+VAL_ 1114 MultiDrive_Mode_ESC 0 "Mode ESC 1 (ON)  " 1 "Mode ESC 2 (OFF) " 2 "Mode ESC 3" 3 "Mode ESC 4" 4 "Mode ESC 5 " 5 "Mode ESC 6" 6 "Mode ESC 7" 7 "Unavailable";
+VAL_ 378 TransmRangeEngaged_Target 0 "declutched at rest" 1 "1st range" 2 "2nd range" 3 "3rd range" 4 "4th range" 5 "5th range" 6 "6th range" 7 "7th range" 8 "8th range" 9 "reverse" 10 "neutral or parking" 11 "CVT in continuous mode" 15 "AT in limphome";
+VAL_ 378 TransmRangeEngaged_Current 0 "declutched at rest" 1 "1st range" 2 "2nd range" 3 "3rd range" 4 "4th range" 5 "5th range" 6 "6th range" 7 "7th range" 8 "8th range" 9 "reverse" 10 "neutral or parking" 11 "CVT in continuous mode" 12 "9th range" 13 "Not used" 14 "Not used" 15 "AT in limphome";
+VAL_ 378 AT_TorqueControlType 0 "torque limitation without transmission change" 5 "Upper torque value limitation" 6 "Lower torque value limitation" 7 "Full torque control";
+VAL_ 378 TorqueConverterState 0 "unlocked converter" 1 "sliding converter" 2 "locked-up converter" 3 "unavailable";
+VAL_ 390 ASR_MSRAcknowledgement 0 "data received not consistent" 1 "Data received  consistent";
+VAL_ 390 ECM_TorqueRequestStatus 0 "normal" 1 "Exact torque request cannot be achieved (mesure imprecision)" 2 "Transient state preventing torque request realization" 3 "torque request can not be achieved";
+VAL_ 1318 SPORT_Mode_BrakeStatus 0 "Not used" 1 "Off" 2 "On" 3 "Unavailable";
+VAL_ 1318 EDL_Brake_Status 0 "Not used" 1 "Off" 2 "On_ESC_On" 3 "On_ESC_Off" 4 "On_Offroad_1" 5 "On_Offroad_2" 15 "Unavailable";
+VAL_ 1318 EPB_status 0 "Not used" 1 "EPB on" 2 "EPB on_with_max_slope " 3 "EPB off" 4 "EPB_off_w/o_brake_pedal" 5 "EPB warning" 15 "Unavailable";
+VAL_ 1318 AUTOHOLD_status 0 "Not used" 1 "AUTOHOLD on" 2 "AHOLD_EPB_on" 3 "AHOLD_EPB_off" 4 "AUTOHOLD off" 15 "Unavailable";
+VAL_ 1314 SPORT_Mode_Status 0 "Not Used" 1 "Off" 2 "On_Request" 3 "Off_Request" 4 "On" 7 "Unavailable";
+VAL_ 1314 EDL_ECM_Status 0 "Not Used" 1 "Off" 2 "On_ESC_On" 3 "On_ESC_Off" 4 "On_Off-roar_1" 5 "On_Off-road_2" 15 "Unavailable";
+VAL_ 1312 EDL_Status 0 "Not Used" 1 "On_Request_ESC_On" 2 "On_ESC_On" 3 "On_Request_ESC_Off" 4 "On_ESC_Off" 5 "On_Request_Off-road_1" 6 "On_Off-road_1" 7 "On_Request_Off-road_2" 8 "On_Off-road_2" 9 "On_Sport" 10 "Off" 15 "Unavailable";
