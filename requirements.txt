@@ -1,0 +1,8 @@
+nuitka>=1.8.0
+setuptools==68.2.2
+pandas
+numpy
+matplotlib
+plotly
+nptdms
+PySide6
