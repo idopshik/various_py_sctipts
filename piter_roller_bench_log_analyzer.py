@@ -1,4 +1,87 @@
-#  not the last version (2025_11_19 6:53 )
+"""
+CAN Log Analyzer - Valve Command Processor
+
+ПОДДЕРЖИВАЕМЫЕ ФОРМАТЫ ФАЙЛОВ:
+--------------------------------
+1. BLF files (*.blf) - Binary CAN logs
+2. CSV files (*.csv) - Comma-separated values
+3. XLSX files (*.xlsx, *.xls) - Excel files (два типа):
+   - xlsx (старый завод): автопоиск колонок Time, Data, ID
+   - xlsx_custom (новый завод): фиксированные колонки (№ п/п, Date, Time, Type, Level, Event)
+4. ASCII logs (*.txt, *.log, *.asc) - Текстовые CAN логи
+
+ИСПОЛЬЗОВАНИЕ:
+--------------
+# Автоматическое определение формата (рекомендуется)
+python can_analyzer.py
+
+# Явное указание типа файла
+python can_analyzer.py -t blf          # BLF файл
+python can_analyzer.py -t csv           # CSV файл
+python can_analyzer.py -t xlsx          # XLSX старого завода
+python can_analyzer.py -t xlsx_custom   # XLSX нового завода
+python can_analyzer.py -t ascii         # ASCII лог
+
+# Дополнительные опции
+python can_analyzer.py --only-requests  # Только запросы (игнорировать ответы)
+python can_analyzer.py --no-graph       # Не создавать графики
+
+# Комбинированные опции
+python can_analyzer.py -t xlsx_custom --only-requests --no-graph
+
+ОПИСАНИЕ ВЫХОДНЫХ ДАННЫХ:
+-------------------------
+Скрипт создает в папке с исходным файлом подпапку с именем файла, содержащую:
+1. v_names_<filename>.csv - обработанные данные с идентификацией клапанов
+2. valves_analysis_<filename>_<timestamp>.txt - детальный отчет анализа
+3. valve_timeline_<filename>_<timestamp>.png - график временной линии (если включено)
+
+АНАЛИЗИРУЕМЫЕ КОМАНДЫ:
+---------------------
+- 2F commands: WriteDataByIdentifier запросы
+- 6F responses: Положительные ответы
+- 7F errors: Ошибки
+- 3E commands: TesterPresent запросы
+- 7E responses: Ответы на TesterPresent
+- 10 commands: Session control запросы
+- 50 responses: Ответы на session control
+
+ЦИФРОВЫЕ ИДЕНТИФИКАТОРЫ КЛАПАНОВ:
+-------------------------------
+pu   - Насос
+sh1  - FL/RR Электрический шаттл-клапан
+sh2  - FR/RL Электрический шаттл-клапан
+is1  - FL/RR Изолирующий клапан
+is2  - FR/RL Изолирующий клапан
+iFL  - Впускной клапан передний левый
+iFR  - Впускной клапан передний правый
+iRL  - Впускной клапан задний левый
+iRR  - Впускной клапан задний правый
+oFL  - Выпускной клапан передний левый
+oFR  - Выпускной клапан передний правый
+oRL  - Выпускной клапан задний левый
+oRR  - Выпускной клапан задний правый
+
+ПРИМЕРЫ ДАННЫХ:
+---------------
+XLSX нового завода:
+№ п/п  Date        Time            Type  Level  Event
+1017   19.11.2025  16:03:09.941    Full  Info   [0x740] (6) -> 0x2F 0x4B 0x12 0x03 0x57 0x43
+
+XLSX старого завода:
+Time        ID    Data
+16:03:09    0x740 2F 4B 12 03 57 43
+
+BLF/CSV/ASCII:
+timestamp, arbitration_id, data_bytes...
+
+АВТОР: phoeby
+ВЕРСИЯ: 2.0 (поддержка двух типов XLSX)
+ОБНОВЛЕНО: 2025.11.20
+
+"""
+
+
 from pathlib import Path
 import sys
 import tkinter as tk
@@ -13,12 +96,22 @@ import matplotlib.patches as mpatches
 from can import BLFReader
 import can
 import pandas as pd
+import argparse
 
 target_ids = [0x740, 0x760]
 
 # Configuration flags
 ONLYREQUEST = False
 WITHGRAPH = True
+
+# флаг для отображения маркеров начала и конца команд
+# Это похоже больше не работает и не нужно!.
+SHOW_START_AND_END_COMMAND_MARKERS = True
+
+# флаг для добавления Extended Session и Tester Present
+ADD_EXS_AND_TP = True
+# строить график только для периода активной работы клапанов
+GRAPH_FOR_MOTOR_ONLY = True
 
 # Valve names mapping table
 VALVE_NAMES = {
@@ -50,6 +143,58 @@ VALVE_COLORS = {
     "oRR": "#444444"
 }
 
+def find_valve_activity_period(processed_data):
+    """
+    Находит период активной работы клапанов в processed_data
+    Возвращает (start_time_ms, end_time_ms) или None если активность не найдена
+    """
+    if not processed_data:
+        return None
+
+    # Собираем все временные метки, когда есть активные клапаны
+    active_times = []
+    for entry in processed_data:
+        line_num, sequence, bytes_val, timediff, valves, req_type, full_line, timestamp_ms = entry
+        if valves and timestamp_ms is not None:  # Если есть активные клапаны и валидное время
+            active_times.append(timestamp_ms)
+
+    if not active_times:
+        return None
+
+    # Находим начало и конец периода активности
+    start_time = min(active_times)
+    end_time = max(active_times)
+
+    # Добавляем буфер в 3 секунды до и после для наглядности
+    buffer_ms = 3000
+    start_time_with_buffer = max(0, start_time - buffer_ms)
+    end_time_with_buffer = end_time + buffer_ms
+
+    print(f"[MotorActivity] Found valve activity period: {start_time} - {end_time} ms")
+    print(f"[MotorActivity] With buffer: {start_time_with_buffer} - {end_time_with_buffer} ms")
+    print(f"[MotorActivity] Activity duration: {(end_time - start_time) / 1000:.2f} seconds")
+    print(f"[MotorActivity] Active events: {len(active_times)}")
+
+    return (start_time_with_buffer, end_time_with_buffer)
+
+def filter_data_for_motor_period(processed_data, activity_period):
+    """
+    Фильтрует processed_data, оставляя только данные в пределах периода активности клапанов
+    """
+    if not activity_period:
+        return processed_data
+
+    start_time, end_time = activity_period
+    filtered_data = []
+
+    for entry in processed_data:
+        line_num, sequence, bytes_val, timediff, valves, req_type, full_line, timestamp_ms = entry
+        if timestamp_ms is not None and start_time <= timestamp_ms <= end_time:
+            filtered_data.append(entry)
+
+    print(f"[MotorActivity] Filtered data: {len(filtered_data)} entries (was {len(processed_data)})")
+    return filtered_data
+
 def detect_file_format(file_path):
     """Detects file format: csv, blf, xlsx, or ascii log"""
     ext = os.path.splitext(file_path)[1].lower()
@@ -58,7 +203,15 @@ def detect_file_format(file_path):
     elif ext == '.csv':
         return 'csv'
     elif ext in ['.xlsx', '.xls']:
-        return 'xlsx'
+        # Проверяем структуру файла для определения подтипа
+        try:
+            df = pd.read_excel(file_path)
+            if all(col in df.columns for col in ['№ п/п', 'Date', 'Time', 'Type', 'Level', 'Event']):
+                return 'xlsx_custom'  # Новый формат
+            else:
+                return 'xlsx'  # Старый формат
+        except:
+            return 'xlsx'  # По умолчанию старый формат при ошибке
     elif ext in ['.txt', '.log', '.asc']:
         return 'ascii'
     else:
@@ -74,6 +227,112 @@ def detect_file_format(file_path):
         except:
             pass
         return 'csv'
+
+def parse_xlsx_file_custom(file_path):
+    """
+    Parses XLSX file in custom format (№ п/п, Date, Time, Type, Level, Event)
+    Returns list of tuples: (timestamp_ms, hex_data_string, original_line)
+    """
+    messages = []
+
+    try:
+        # Читаем Excel файл
+        df = pd.read_excel(file_path)
+        print(f"Excel file loaded. Shape: {df.shape}")
+        print(f"Columns: {df.columns.tolist()}")
+
+        # Фильтруем только CAN сообщения
+        df_can = df[df['Type'] == 'Can'].copy()
+        print(f"Found {len(df_can)} CAN messages")
+
+        # Функция для парсинга CAN сообщений из колонки Event
+        def parse_can_event(event_str):
+            pattern = r'\[(0x[0-9a-fA-F]+)\]\s*\((\d+)\)\s*(->|<-)\s*(.+)'
+            match = re.search(pattern, event_str)
+
+            if match:
+                can_id = match.group(1)
+                dlc = int(match.group(2))
+                direction = match.group(3)
+                data_hex = match.group(4)
+
+                # Конвертируем данные в формат XX XX XX
+                hex_bytes = data_hex.split()
+                formatted_data = ' '.join([byte.upper().replace('0X', '') for byte in hex_bytes])
+
+                return can_id, dlc, direction, formatted_data
+            return None, None, None, None
+
+        # Обрабатываем каждую CAN строку
+        for idx, row in df_can.iterrows():
+            try:
+                # Создаем timestamp (объединяем дату и время)
+                timestamp_str = f"{row['Date']} {row['Time']}"
+
+                # Парсим CAN сообщение
+                can_id, dlc, direction, data = parse_can_event(str(row['Event']))
+
+                if can_id and data:
+                    # Парсим timestamp в миллисекунды
+                    timestamp_ms = parse_timestamp_custom(timestamp_str)
+                    if timestamp_ms is None:
+                        timestamp_ms = idx * 1000  # fallback
+
+                    # Создаем оригинальную строку для совместимости
+                    original_line = f"Date: {row['Date']} Time: {row['Time']} Event: {row['Event']}"
+
+                    messages.append((timestamp_ms, data, original_line))
+
+                    if len(messages) <= 5:  # Выводим первые 5 сообщений для отладки
+                        print(f"DEBUG: Parsed CAN message - Time: {timestamp_str}, ID: {can_id}, Data: {data}")
+
+            except Exception as e:
+                print(f"Error parsing row {idx}: {e}")
+                continue
+
+        print(f"Successfully parsed {len(messages)} CAN messages from XLSX")
+        return messages
+
+    except Exception as e:
+        print(f"Error parsing XLSX file: {e}")
+        import traceback
+        traceback.print_exc()
+        return []
+
+def parse_timestamp_custom(timestamp_str):
+    """
+    Parse timestamp from custom XLSX format (DD.MM.YYYY HH:MM:SS.mmm)
+    Returns time in milliseconds
+    """
+    try:
+        # Remove any arrows or special characters
+        cleaned_str = re.sub(r'[⇨⇦]', '', timestamp_str).strip()
+
+        # Handle format DD.MM.YYYY HH:MM:SS.mmm
+        if ' ' in cleaned_str:
+            date_part, time_part = cleaned_str.split(' ', 1)
+        else:
+            time_part = cleaned_str
+
+        # Parse time part
+        time_parts = time_part.split(':')
+        if len(time_parts) >= 3:
+            hours = int(time_parts[0])
+            minutes = int(time_parts[1])
+
+            # Split seconds and milliseconds
+            seconds_parts = time_parts[2].split('.')
+            seconds = int(seconds_parts[0])
+            milliseconds = int(seconds_parts[1]) if len(seconds_parts) > 1 else 0
+
+            total_ms = (hours * 3600 + minutes * 60 + seconds) * 1000 + milliseconds
+            return total_ms
+
+        print(f"Warning: Unknown time format: {timestamp_str}")
+        return None
+    except Exception as e:
+        print(f"Error parsing timestamp '{timestamp_str}': {e}")
+        return None
 
 def parse_ascii_log(file_path):
     """
@@ -128,6 +387,7 @@ def parse_ascii_log(file_path):
         import traceback
         traceback.print_exc()
         return []
+
 
 def parse_blf_file(file_path):
     """Parses BLF file - возвращаем старый формат с 3 элементами"""
@@ -402,21 +662,221 @@ def parse_xlsx_file(file_path):
         traceback.print_exc()
         return []
 
-def parse_input_file(file_path):
-    """Universal parser - все парсеры возвращают одинаковый формат: (timestamp_ms, hex_data, original_line)"""
-    file_format = detect_file_format(file_path)
-    print(f"Detected file format: {file_format.upper()}")
+def parse_xlsx_file_generic(file_path):
+    """
+    Parses generic XLSX file and returns list of tuples: (timestamp_ms, hex_data_string, original_line)
+    Улучшенная версия с лучшей обработкой ID и отладочной информацией
+    """
+    messages = []
 
-    if file_format == 'blf':
+    try:
+        # Читаем Excel файл
+        df = pd.read_excel(file_path)
+        print(f"Excel file loaded. Shape: {df.shape}")
+        print(f"Columns: {df.columns.tolist()}")
+
+        # Автоматическое определение колонок
+        time_col = None
+        data_col = None
+        id_col = None
+
+        # Сначала ищем по ключевым словам в названиях колонок
+        for col in df.columns:
+            col_str = str(col).lower()
+
+            # Поиск колонки времени
+            if not time_col and any(keyword in col_str for keyword in
+                                  ['time', 'timestamp', 'время', 'date', 'временная']):
+                time_col = col
+                print(f"Found time column: {col}")
+
+            # Поиск колонки данных
+            if not data_col and any(keyword in col_str for keyword in
+                                  ['data', 'данные', 'hex', 'message', 'can']):
+                data_col = col
+                print(f"Found data column: {col}")
+
+            # Поиск колонки ID
+            if not id_col and any(keyword in col_str for keyword in
+                                ['id', 'идентификатор', 'arbitration']):
+                id_col = col
+                print(f"Found ID column: {col}")
+
+        # Если не нашли по названиям, используем стандартные имена
+        if not time_col:
+            for col in ['Time', 'Время', 'Timestamp']:
+                if col in df.columns:
+                    time_col = col
+                    break
+            if not time_col and len(df.columns) >= 1:
+                time_col = df.columns[0]
+                print(f"Using first column as time: {time_col}")
+
+        if not data_col:
+            for col in ['Data', 'Данные', 'Message', 'CAN Data']:
+                if col in df.columns:
+                    data_col = col
+                    break
+            if not data_col and len(df.columns) >= 2:
+                data_col = df.columns[1]
+                print(f"Using second column as data: {data_col}")
+
+        if not id_col:
+            for col in ['ID', 'Id', 'Arbitration ID']:
+                if col in df.columns:
+                    id_col = col
+                    break
+            if not id_col and len(df.columns) >= 3:
+                id_col = df.columns[2]
+                print(f"Using third column as ID: {id_col}")
+
+        print(f"Final columns - Time: {time_col}, Data: {data_col}, ID: {id_col}")
+
+        if time_col is None or data_col is None:
+            raise ValueError(f"Cannot find required columns. Time: {time_col}, Data: {data_col}")
+
+        # Функция для парсинга ID с поддержкой разных форматов
+        def parse_id(id_val):
+            if pd.isna(id_val):
+                return None
+            try:
+                if isinstance(id_val, str):
+                    id_val = id_val.strip()
+                    # Убираем префиксы если есть
+                    if id_val.startswith('0x'):
+                        return int(id_val, 16)
+                    elif id_val.startswith('⇨') or id_val.startswith('⇦'):
+                        # Убираем стрелки если есть
+                        id_val = id_val[1:].strip()
+                    # Пробуем как hex (без префикса)
+                    try:
+                        return int(id_val, 16)
+                    except ValueError:
+                        # Пробуем как decimal
+                        return int(id_val)
+                else:
+                    # Если это число, считаем что это уже правильный ID
+                    return int(id_val)
+            except Exception as e:
+                print(f"Error parsing ID '{id_val}': {e}")
+                return None
+
+        # Собираем статистику по ID для отладки
+        id_stats = {}
+        processed_count = 0
+        target_ids_found = 0
+
+        # Обрабатываем каждую строку
+        for index, row in df.iterrows():
+            try:
+                # Получаем данные
+                if data_col not in row:
+                    continue
+
+                hex_data = str(row[data_col]).strip()
+
+                # Пропускаем пустые строки
+                if not hex_data or hex_data.lower() in ['nan', 'none', '']:
+                    continue
+
+                # Очищаем данные - убираем лишние пробелы
+                hex_data = ' '.join(hex_data.split())
+
+                # Парсим ID
+                arbitration_id = None
+                if id_col and id_col in row and not pd.isna(row[id_col]):
+                    arbitration_id = parse_id(row[id_col])
+
+                    # Собираем статистику
+                    if arbitration_id is not None:
+                        id_stats[arbitration_id] = id_stats.get(arbitration_id, 0) + 1
+
+                    # Фильтруем по целевым ID
+                    if arbitration_id not in target_ids:
+                        continue
+                    else:
+                        target_ids_found += 1
+                else:
+                    # Если нет колонки ID, пропускаем фильтрацию
+                    print(f"Warning: No ID column or empty ID in row {index}")
+                    continue
+
+                # Получаем время
+                timestamp_ms = None
+                if time_col in row and not pd.isna(row[time_col]):
+                    timestamp_str = str(row[time_col])
+                    timestamp_ms = parse_timestamp(timestamp_str)
+
+                    # Альтернативные методы парсинга времени
+                    if timestamp_ms is None:
+                        try:
+                            if isinstance(row[time_col], (pd.Timestamp, datetime)):
+                                dt = row[time_col]
+                                total_seconds = dt.hour * 3600 + dt.minute * 60 + dt.second
+                                timestamp_ms = int(total_seconds * 1000 + dt.microsecond / 1000)
+                                print(f"Parsed timestamp from datetime: {dt} -> {timestamp_ms} ms")
+                        except:
+                            pass
+
+                # Если время не распарсилось, используем индекс
+                if timestamp_ms is None:
+                    timestamp_ms = index * 1000
+                    print(f"Using index as timestamp for row {index}: {timestamp_ms} ms")
+
+                # Создаем оригинальную строку для совместимости
+                original_parts = []
+                if time_col in row:
+                    original_parts.append(f"Time: {row[time_col]}")
+                if id_col and id_col in row:
+                    original_parts.append(f"ID: {row[id_col]}")
+                original_parts.append(f"Data: {hex_data}")
+
+                original_line = "; ".join(original_parts)
+
+                messages.append((timestamp_ms, hex_data, original_line))
+                processed_count += 1
+
+                if processed_count <= 5:  # Выводим первые 5 сообщений для отладки
+                    print(f"DEBUG: Successfully parsed row {index}: ID={arbitration_id:03X}, Data={hex_data}")
+
+            except Exception as e:
+                print(f"Error parsing row {index}: {e}")
+                continue
+
+        # Выводим статистику по ID
+        print(f"ID statistics in XLSX file:")
+        for id_val, count in sorted(id_stats.items()):
+            print(f"  ID 0x{id_val:03X} ({id_val}): {count} occurrences")
+
+        print(f"Target IDs found: {target_ids_found}")
+        print(f"Successfully parsed XLSX file: {processed_count} messages processed")
+        return messages
+
+    except Exception as e:
+        print(f"Error parsing XLSX file: {e}")
+        import traceback
+        traceback.print_exc()
+        return []
+
+def parse_input_file(file_path, file_type='auto'):
+    """Universal parser with explicit XLSX type support"""
+    if file_type == 'auto':
+        file_type = detect_file_format(file_path)
+
+    print(f"Using file type: {file_type.upper()}")
+
+    if file_type == 'blf':
         return parse_blf_file(file_path)
-    elif file_format == 'csv':
+    elif file_type == 'csv':
         return parse_csv_file(file_path)
-    elif file_format == 'xlsx':
-        return parse_xlsx_file(file_path)
-    elif file_format == 'ascii':
+    elif file_type == 'xlsx':
+        return parse_xlsx_file_generic(file_path)  # Старый формат по умолчанию
+    elif file_type == 'xlsx_custom':  # Явное указание нового формата
+        return parse_xlsx_file_custom(file_path)
+    elif file_type == 'ascii':
         return parse_ascii_log(file_path)
     else:
-        raise ValueError(f"Unsupported file format: {file_format}")
+        raise ValueError(f"Unsupported file format: {file_type}")
 
 def analyze_commands(messages, file_format='blf'):
     """
@@ -1157,6 +1617,7 @@ def show_message(title, message, is_error=False):
     root.destroy()
     root.quit()
 
+
 def create_valve_timeline_graph(directory, filename, processed_data, pressure_stats):
     """
     Creates timeline graph showing valve states over time.
@@ -1164,6 +1625,7 @@ def create_valve_timeline_graph(directory, filename, processed_data, pressure_st
     Y-axis: valves (each valve has its own line)
     Lines are thick and colored, at Y=valve_index when active, at Y=0 when inactive
     Все файлы сохраняются в указанной директории.
+    Улучшенная версия с вертикальными линиями для команд и фильтрацией по периоду активности
     """
     if not WITHGRAPH:
         print("[TimestampDebug] WITHGRAPH is False, skipping graph creation")
@@ -1175,47 +1637,113 @@ def create_valve_timeline_graph(directory, filename, processed_data, pressure_st
 
     print(f"[TimestampDebug] create_valve_timeline_graph called with {len(processed_data)} entries")
 
-    try:
-        # Extract time series data for each valve
-        # Structure: {valve_name: [(time_sec, is_active), ...]}
-        valve_timelines = {valve: [] for valve in VALVE_ORDER}
+    # Для графика используем все записи с командами управления клапанами
+    # включая 00 00 (всё выключено), чтобы показать переходы в выключенное состояние
+    graph_data = [entry for entry in processed_data
+                  if entry[1] in ["2F 4B 12 03", "6F 4B 12 03", "62 4B 12"]]
+    print(f"[GraphDebug] Filtered graph data: {len(graph_data)} valve command entries (from {len(processed_data)} total)")
 
-        # Get first timestamp to normalize
-        first_timestamp = None
+    if not graph_data:
+        print("[GraphDebug] No valve command data to plot")
+        return None
 
-        for idx, entry in enumerate(processed_data):
-            # Unpack with timestamp_ms at the end
+    # Определяем период активности клапанов
+    activity_period = None
+    if GRAPH_FOR_MOTOR_ONLY:
+        activity_period = find_valve_activity_period(graph_data)
+        if activity_period:
+            graph_data = filter_data_for_motor_period(graph_data, activity_period)
+            print(f"[MotorActivity] Building graph for motor activity period only: {activity_period}")
+        else:
+            print(f"[MotorActivity] No valve activity found, building full graph")
+
+    # Собираем маркеры Extended Session и Tester Present
+    ext_session_markers = []
+    tester_present_markers = []
+
+    if ADD_EXS_AND_TP:
+        # Сначала посмотрим, что вообще есть в processed_data
+        all_sequences = {}
+        for entry in processed_data:
+            seq = entry[1]
+            all_sequences[seq] = all_sequences.get(seq, 0) + 1
+
+        print(f"[Markers DEBUG] All sequences in processed_data: {all_sequences}")
+
+        # Теперь собираем маркеры
+        for entry in processed_data:
             line_num, sequence, bytes_val, timediff, valves, req_type, full_line, timestamp_ms = entry
 
-            if idx == 0:
-                print(f"[TimestampDebug] First entry in graph: line_num={line_num}, timestamp_ms={timestamp_ms}, valves={valves}")
+            # Детальная диагностика для первых нескольких 3E/7E
+            if sequence in ["3E", "7E"] and len(tester_present_markers) < 3:
+                print(f"[Markers DEBUG] Found {sequence}: timestamp={timestamp_ms}, req_type={req_type}")
+                if GRAPH_FOR_MOTOR_ONLY and activity_period:
+                    start_time, end_time = activity_period
+                    print(f"[Markers DEBUG]   activity_period: {start_time} - {end_time}")
+                    print(f"[Markers DEBUG]   in range: {start_time <= timestamp_ms <= end_time}")
+
+            if timestamp_ms is None:
+                continue
+
+            # Если GRAPH_FOR_MOTOR_ONLY, фильтруем по периоду активности
+            if GRAPH_FOR_MOTOR_ONLY and activity_period:
+                start_time, end_time = activity_period
+                if timestamp_ms < start_time or timestamp_ms > end_time:
+                    continue
+
+            if sequence in ["10 03", "50 03"]:
+                ext_session_markers.append((timestamp_ms, sequence, req_type))
+            elif sequence in ["3E", "7E"]:
+                tester_present_markers.append((timestamp_ms, sequence, req_type))
+
+        print(f"[Markers] Extended Session markers: {len(ext_session_markers)}")
+        print(f"[Markers] Tester Present markers: {len(tester_present_markers)}")
+
+    try:
+        # Extract time series data for each valve
+        valve_timelines = {valve: [] for valve in VALVE_ORDER}
+
+        # Get first timestamp to normalize - используем минимальный из ВСЕХ данных
+        first_timestamp = None
+
+        # Сначала находим минимальный timestamp из всех источников
+        all_timestamps = []
+
+        # Из graph_data
+        for entry in graph_data:
+            if entry[7] is not None:  # timestamp_ms
+                all_timestamps.append(entry[7])
+
+        # Из маркеров (если ADD_EXS_AND_TP)
+        if ADD_EXS_AND_TP:
+            for ts, _, _ in ext_session_markers:
+                all_timestamps.append(ts)
+            for ts, _, _ in tester_present_markers:
+                all_timestamps.append(ts)
+
+        if all_timestamps:
+            first_timestamp = min(all_timestamps)
+            print(f"[GraphDebug] First timestamp set to: {first_timestamp} (from all data)")
+        else:
+            print("[GraphDebug] Could not find any timestamps")
+            return None
+
+        # Теперь строим timeline для клапанов
+        for idx, entry in enumerate(graph_data):
+            line_num, sequence, bytes_val, timediff, valves, req_type, full_line, timestamp_ms = entry
 
             if timestamp_ms is not None:
-                if first_timestamp is None:
-                    first_timestamp = timestamp_ms
-                    print(f"[TimestampDebug] First timestamp set to: {first_timestamp}")
-
-                # Normalize time to start from 0
                 time_sec = (timestamp_ms - first_timestamp) / 1000.0
 
-                if idx == 0:
-                    print(f"[TimestampDebug] First time_sec: {time_sec}")
-
-                # Mark which valves are active at this time
                 for valve in VALVE_ORDER:
                     is_active = valve in valves
                     valve_timelines[valve].append((time_sec, is_active))
-            else:
-                print(f"[TimestampDebug] Entry {idx} has timestamp_ms=None")
 
-        # Check if we have data
         if first_timestamp is None:
-            print("[TimestampDebug] Could not parse timestamps - first_timestamp is None")
+            print("[GraphDebug] Could not parse timestamps - first_timestamp is None")
             return None
 
-        print(f"[TimestampDebug] Successfully parsed timestamps, first_timestamp={first_timestamp}")
-
-        # Create figure with high DPI for good resolution
+        # Create figure
         fig, ax = plt.subplots(figsize=(16, 10), dpi=150)
 
         # Plot each valve
@@ -1224,17 +1752,13 @@ def create_valve_timeline_graph(directory, filename, processed_data, pressure_st
             if not timeline:
                 continue
 
-            # Create segments for plotting
             times = []
             values = []
 
             for time_sec, is_active in timeline:
                 times.append(time_sec)
-                # When active, plot at valve's Y position (reversed index for top-to-bottom)
-                # When inactive, plot at 0
                 values.append(len(VALVE_ORDER) - idx if is_active else 0)
 
-            # Plot with thick lines and steps
             ax.plot(times, values,
                    drawstyle='steps-post',
                    color=VALVE_COLORS[valve],
@@ -1242,40 +1766,89 @@ def create_valve_timeline_graph(directory, filename, processed_data, pressure_st
                    label=valve,
                    alpha=0.8)
 
-        print(f"[TimestampDebug] Plotted {len(VALVE_ORDER)} valves")
+        # Set Y limits
+        ax.set_ylim(-0.5, len(VALVE_ORDER) + 0.5)
+        y_min, y_max = ax.get_ylim()
+
+        # Draw Extended Session markers
+        if ADD_EXS_AND_TP and ext_session_markers:
+            for timestamp_ms, sequence, req_type in ext_session_markers:
+                time_sec = (timestamp_ms - first_timestamp) / 1000.0
+
+                if "10" in sequence:  # Request
+                    color = 'green'
+                    linestyle = '--'
+                else:  # Response (50)
+                    color = 'darkgreen'
+                    linestyle = ':'
+
+                ax.axvline(x=time_sec, color=color, linestyle=linestyle,
+                          alpha=0.6, linewidth=1.5)
+
+        # Draw Tester Present markers (optional - may be too many)
+        # Uncomment if you want to see them:
+        # Draw Tester Present markers
+        if ADD_EXS_AND_TP and tester_present_markers:
+            print(f"[TP Draw] Drawing {len(tester_present_markers)} Tester Present markers")
+            print(f"[TP Draw] first_timestamp = {first_timestamp}")
+
+            for i, (timestamp_ms, sequence, req_type) in enumerate(tester_present_markers):
+                time_sec = (timestamp_ms - first_timestamp) / 1000.0
+
+                if i < 5:  # Показываем первые 5
+                    print(f"[TP Draw] Marker {i}: timestamp={timestamp_ms}, time_sec={time_sec:.3f}")
+
+                ax.axvline(x=time_sec, color='gray', linestyle=':', alpha=0.7, linewidth=1)
+
+            # Проверяем границы графика
+            x_min, x_max = ax.get_xlim()
+            print(f"[TP Draw] Graph X limits: {x_min:.3f} to {x_max:.3f}")
 
         # Set Y-axis ticks and labels
         y_ticks = [len(VALVE_ORDER) - idx for idx in range(len(VALVE_ORDER))]
         ax.set_yticks(y_ticks)
         ax.set_yticklabels(VALVE_ORDER, fontsize=12, fontweight='bold')
 
-        # Set X-axis label
+        # Labels and title
         ax.set_xlabel('Time (seconds)', fontsize=14, fontweight='bold')
         ax.set_ylabel('Valves', fontsize=14, fontweight='bold')
 
-        # Set title
-        ax.set_title(f'Valve Activity Timeline - {filename}', fontsize=16, fontweight='bold')
+        if GRAPH_FOR_MOTOR_ONLY and activity_period:
+            title = f'Valve Activity Timeline - {filename} (Motor Activity Period Only)'
+            duration_sec = (activity_period[1] - activity_period[0]) / 1000
+            ax.set_title(f'{title}\nDuration: {duration_sec:.1f}s', fontsize=16, fontweight='bold')
+        else:
+            ax.set_title(f'Valve Activity Timeline - {filename}', fontsize=16, fontweight='bold')
 
-        # Grid
         ax.grid(True, alpha=0.3, linestyle='--')
 
-        # Set Y limits to show all valves clearly
-        ax.set_ylim(-0.5, len(VALVE_ORDER) + 0.5)
-
         # Legend
-        ax.legend(loc='center left', bbox_to_anchor=(1, 0.5), fontsize=10)
+        legend_handles = []
+        legend_labels = []
 
-        # Add pressure build time table in bottom right
+        for valve in VALVE_ORDER:
+            legend_handles.append(plt.Line2D([0], [0], color=VALVE_COLORS[valve], linewidth=3))
+            legend_labels.append(valve)
+
+        # Add Extended Session to legend if present
+        if ADD_EXS_AND_TP and ext_session_markers:
+            legend_handles.append(plt.Line2D([0], [0], color='green', linestyle='--', linewidth=1.5))
+            legend_labels.append('Extended Session')
+
+        if legend_handles:
+            ax.legend(legend_handles, legend_labels, loc='center left', bbox_to_anchor=(1, 0.5), fontsize=10)
+
+        # Pressure build time table
         if pressure_stats and pressure_stats['build']:
-            build_times = pressure_stats['build']
-
-            # Create text for table
             table_text = "Pressure Build Time:\n"
             for wheel in ['FL', 'FR', 'RL', 'RR']:
-                time_val = build_times[wheel]
+                time_val = pressure_stats['build'][wheel]
                 table_text += f"{wheel}: {time_val:.3f}s\n"
 
-            # Add text box in bottom right corner
+            if ADD_EXS_AND_TP:
+                table_text += f"\nExt Session: {len(ext_session_markers)}"
+                table_text += f"\nTester Present: {len(tester_present_markers)}"
+
             ax.text(0.98, 0.02, table_text,
                    transform=ax.transAxes,
                    fontsize=11,
@@ -1285,24 +1858,24 @@ def create_valve_timeline_graph(directory, filename, processed_data, pressure_st
                    family='monospace',
                    fontweight='bold')
 
-            print(f"[TimestampDebug] Added pressure stats table to graph")
-
-        # Tight layout
         plt.tight_layout()
 
-        # Save figure (directory теперь это output_dir)
+        # Save figure
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        graph_filename = f"valve_timeline_{filename}_{timestamp}.png"
+        if GRAPH_FOR_MOTOR_ONLY and activity_period:
+            graph_filename = f"valve_timeline_{filename}_MOTOR_ONLY_{timestamp}.png"
+        else:
+            graph_filename = f"valve_timeline_{filename}_{timestamp}.png"
         graph_path = os.path.join(directory, graph_filename)
 
         plt.savefig(graph_path, dpi=150, bbox_inches='tight')
         plt.close()
 
-        print(f"[TimestampDebug] Created timeline graph: {graph_path}")
+        print(f"[GraphDebug] Created timeline graph: {graph_path}")
         return graph_path
 
     except Exception as e:
-        print(f"[TimestampDebug] Error creating graph: {e}")
+        print(f"[GraphDebug] Error creating graph: {e}")
         import traceback
         traceback.print_exc()
         return None
@@ -1480,9 +2053,9 @@ def ensure_output_directory(directory, filename_no_ext):
     print(f"Output directory: {output_dir}")
     return output_dir
 
-def process_file(file_path):
+def process_file(file_path, file_type='auto'):
     """
-    Processes file - ОСНОВНАЯ ФУНКЦИЯ С ИСПРАВЛЕННЫМ АНАЛИЗОМ КОМАНД
+    Processes file - ОСНОВНАЯ ФУНКЦИЯ С ДОБАВЛЕННОЙ ОБРАБОТКОЙ EXS И TP
     """
     # Specific sequences we're looking for
     target_sequences = {
@@ -1506,20 +2079,23 @@ def process_file(file_path):
         directory = os.path.dirname(file_path)
         filename_with_ext = os.path.basename(file_path)
         filename_no_ext = os.path.splitext(filename_with_ext)[0]
-        file_format = detect_file_format(file_path)  # Определяем формат файла
+
+        # Use provided file_type or auto-detect
+        actual_file_type = file_type if file_type != 'auto' else detect_file_format(file_path)
+        print(f"Processing file as: {actual_file_type.upper()}")
 
         # Create output directory
         output_dir = ensure_output_directory(directory, filename_no_ext)
 
-        # Parse input file
-        messages = parse_input_file(file_path)
+        # Parse input file with specified type
+        messages = parse_input_file(file_path, actual_file_type)
 
         if not messages:
             show_message("Error", "No valid messages found in file", is_error=True)
             return
 
         # Analyze commands with file format information
-        command_stats = analyze_commands(messages, file_format)
+        command_stats = analyze_commands(messages, actual_file_type)
         print("Command analysis completed")
 
         processed_count = 0
@@ -1608,8 +2184,157 @@ def process_file(file_path):
 
                     break  # Break loop after finding first matching sequence
 
+            # ДОБАВЛЯЕМ: Если ADD_EXS_AND_TP = True, ищем Extended Session и Tester Present команды
+            if ADD_EXS_AND_TP:
+                hex_bytes = hex_data.split()
+                if len(hex_bytes) >= 1:
+                    # Для разных форматов файлов по-разному определяем команды
+                    if actual_file_type == 'blf':
+                        # В BLF первый байт - длина данных, поэтому команда на втором байте
+                        if len(hex_bytes) >= 2:
+                            first_byte = hex_bytes[1]
+                            # Extended Session (10 03) - ищем в любом месте данных
+                            if '10 03' in hex_data and len(hex_bytes) >= 3:
+                                # Проверяем, что это действительно команда 10 с session 03
+                                if hex_bytes[1] == '10' and hex_bytes[2] == '03':
+                                    sequence = "10 03"
+                                    req_type = "Extended Session"
+                                    valves = []
+
+                                    # Добавляем в output_lines
+                                    output_line = original_line + f" // {req_type}\n"
+                                    output_lines.append(output_line)
+                                    processed_count += 1
+
+                                    # Добавляем в processed_data
+                                    processed_data.append((idx+1, sequence, " ".join(hex_bytes[1:4]), timediff, valves, req_type, original_line, timestamp_ms))
+
+                                    print(f"Line {idx+1}: Found '{sequence}' ({req_type})")
+
+                            # Extended Session Response (50 03)
+                            elif '50 03' in hex_data and len(hex_bytes) >= 3:
+                                if hex_bytes[1] == '50' and hex_bytes[2] == '03':
+                                    sequence = "50 03"
+                                    req_type = "Extended Session Response"
+                                    valves = []
+
+                                    output_line = original_line + f" // {req_type}\n"
+                                    output_lines.append(output_line)
+                                    processed_count += 1
+
+                                    processed_data.append((idx+1, sequence, " ".join(hex_bytes[1:4]), timediff, valves, req_type, original_line, timestamp_ms))
+
+                                    print(f"Line {idx+1}: Found '{sequence}' ({req_type})")
+
+                            # Tester Present (3E)
+                            elif first_byte == '3E':
+                                sequence = "3E"
+                                req_type = "Tester Present"
+                                valves = []
+
+                                output_line = original_line + f" // {req_type}\n"
+                                output_lines.append(output_line)
+                                processed_count += 1
+
+                                processed_data.append((idx+1, sequence, " ".join(hex_bytes[1:3]), timediff, valves, req_type, original_line, timestamp_ms))
+
+                                print(f"Line {idx+1}: Found '{sequence}' ({req_type})")
+
+                            # Tester Present Response (7E)
+                            elif first_byte == '7E':
+                                sequence = "7E"
+                                req_type = "Tester Present Response"
+                                valves = []
+
+                                output_line = original_line + f" // {req_type}\n"
+                                output_lines.append(output_line)
+                                processed_count += 1
+
+                                processed_data.append((idx+1, sequence, " ".join(hex_bytes[1:3]), timediff, valves, req_type, original_line, timestamp_ms))
+
+                                print(f"Line {idx+1}: Found '{sequence}' ({req_type})")
+
+                    else:  # XLSX и другие форматы
+                        # Для XLSX ищем команды в любом месте данных
+                        first_byte = hex_bytes[0]
+
+                        # Extended Session (10 03) - ищем в любом месте данных
+                        if '10 03' in hex_data:
+                            # Находим позицию команды 10 03 в данных
+                            for i in range(len(hex_bytes) - 1):
+                                if hex_bytes[i] == '10' and i+1 < len(hex_bytes) and hex_bytes[i+1] == '03':
+                                    sequence = "10 03"
+                                    req_type = "Extended Session"
+                                    valves = []
+
+                                    # Добавляем в output_lines
+                                    output_line = original_line + f" // {req_type}\n"
+                                    output_lines.append(output_line)
+                                    processed_count += 1
+
+                                    # Добавляем в processed_data
+                                    command_bytes = " ".join(hex_bytes[i:i+2])
+                                    processed_data.append((idx+1, sequence, command_bytes, timediff, valves, req_type, original_line, timestamp_ms))
+
+                                    print(f"Line {idx+1}: Found '{sequence}' ({req_type})")
+                                    break
+
+                        # Extended Session Response (50 03)
+                        elif '50 03' in hex_data:
+                            for i in range(len(hex_bytes) - 1):
+                                if hex_bytes[i] == '50' and i+1 < len(hex_bytes) and hex_bytes[i+1] == '03':
+                                    sequence = "50 03"
+                                    req_type = "Extended Session Response"
+                                    valves = []
+
+                                    output_line = original_line + f" // {req_type}\n"
+                                    output_lines.append(output_line)
+                                    processed_count += 1
+
+                                    command_bytes = " ".join(hex_bytes[i:i+2])
+                                    processed_data.append((idx+1, sequence, command_bytes, timediff, valves, req_type, original_line, timestamp_ms))
+
+                                    print(f"Line {idx+1}: Found '{sequence}' ({req_type})")
+                                    break
+
+                        # Tester Present (3E) - ищем отдельно
+                        elif '3E' in hex_bytes:
+                            # Ищем байт 3E в любом месте данных
+                            for i, byte in enumerate(hex_bytes):
+                                if byte == '3E':
+                                    sequence = "3E"
+                                    req_type = "Tester Present"
+                                    valves = []
+
+                                    output_line = original_line + f" // {req_type}\n"
+                                    output_lines.append(output_line)
+                                    processed_count += 1
+
+                                    command_bytes = "3E"
+                                    processed_data.append((idx+1, sequence, command_bytes, timediff, valves, req_type, original_line, timestamp_ms))
+
+                                    print(f"Line {idx+1}: Found '{sequence}' ({req_type})")
+                                    break
+
+                        # Tester Present Response (7E)
+                        elif '7E' in hex_bytes:
+                            for i, byte in enumerate(hex_bytes):
+                                if byte == '7E':
+                                    sequence = "7E"
+                                    req_type = "Tester Present Response"
+                                    valves = []
+
+                                    output_line = original_line + f" // {req_type}\n"
+                                    output_lines.append(output_line)
+                                    processed_count += 1
+
+                                    command_bytes = "7E"
+                                    processed_data.append((idx+1, sequence, command_bytes, timediff, valves, req_type, original_line, timestamp_ms))
+
+                                    print(f"Line {idx+1}: Found '{sequence}' ({req_type})")
+                                    break
+
         # Create path for new file in output directory
-        # ВСЕГДА сохраняем как CSV
         new_filename = "v_names_" + filename_no_ext + ".csv"
         new_file_path = os.path.join(output_dir, new_filename)
 
@@ -1629,10 +2354,10 @@ def process_file(file_path):
         if WITHGRAPH and processed_data:
             graph_path = create_valve_timeline_graph(output_dir, filename_no_ext, processed_data, pressure_stats)
 
-        # Create report if we have processed data - ПЕРЕДАЕМ file_format
+        # Create report if we have processed data
         report_path = None
         if processed_data:
-            report_path = write_analysis_report(output_dir, filename_no_ext, processed_data, mismatches, pressure_stats, command_stats, file_format)
+            report_path = write_analysis_report(output_dir, filename_no_ext, processed_data, mismatches, pressure_stats, command_stats, actual_file_type)
             if report_path:
                 print(f"\nCreated detailed report file: {report_path}")
             else:
@@ -1654,17 +2379,47 @@ def process_file(file_path):
         import traceback
         traceback.print_exc()
 
+
+
 # Также нужно обновить функции создания графика и отчета, чтобы они использовали output_dir:
 
-# Main execution
-if __name__ == "__main__":
-    path_to_file, directory, name_no_ext, extension = select_file("Select CSV, BLF, XLSX or log file")
+
+def main():
+    """Main function with enhanced XLSX type support"""
+    parser = argparse.ArgumentParser(description='Process CAN log files and analyze valve commands')
+    parser.add_argument('-t', '--type',
+                       choices=['auto', 'blf', 'csv', 'xlsx', 'xlsx_custom', 'ascii'],
+                       default='auto',
+                       help='Force file type: xlsx (old factory), xlsx_custom (new factory)')
+    parser.add_argument('--only-requests', action='store_true',
+                       help='Process only requests (skip responses)')
+    parser.add_argument('--no-graph', action='store_true',
+                       help='Disable graph generation')
+
+    args = parser.parse_args()
+
+    # Update global flags
+    global ONLYREQUEST, WITHGRAPH
+    ONLYREQUEST = args.only_requests
+    WITHGRAPH = not args.no_graph
+
+    print(f"File type: {args.type}")
+    print(f"Only requests: {ONLYREQUEST}")
+    print(f"With graph: {WITHGRAPH}")
+
+    # Select file
+    path_to_file, directory, name_no_ext, extension = select_file("Select log file")
 
     if path_to_file:
-        process_file(path_to_file)
+        process_file(path_to_file, args.type)  # Теперь передаем 2 аргумента
     else:
         print("No file selected.")
 
-    print("\nScript finished. You can close this window.")
-    if os.name == 'nt':
-        os._exit(0)
+    print("\nScript finished.")
+
+
+
+
+# Main execution
+if __name__ == "__main__":
+    main()
