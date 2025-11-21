@@ -113,6 +113,8 @@ ADD_EXS_AND_TP = True
 # строить график только для периода активной работы клапанов
 GRAPH_FOR_MOTOR_ONLY = True
 
+IGNORE_RESPONSES_IN_GRAPH = True
+
 # Valve names mapping table
 VALVE_NAMES = {
     "pump": "pu",
@@ -1541,10 +1543,13 @@ def analyze_pressure_modes(processed_data):
         print("[TimestampDebug] No processed_data, returning empty results")
         return results
 
+
+    data_to_analyze = [e for e in processed_data if e[5] != "Response"] if IGNORE_RESPONSES_IN_GRAPH else processed_data
+
     # Process consecutive pairs to calculate time intervals
-    for i in range(len(processed_data) - 1):
-        line_num, sequence, bytes_val, timediff, valves, req_type, full_line, timestamp_ms = processed_data[i]
-        next_line = processed_data[i + 1]
+    for i in range(len(data_to_analyze) - 1):
+        line_num, sequence, bytes_val, timediff, valves, req_type, full_line, timestamp_ms = data_to_analyze[i]
+        next_line = data_to_analyze[i + 1]
         next_timediff = next_line[3]
 
         if i == 0:
@@ -1641,6 +1646,10 @@ def create_valve_timeline_graph(directory, filename, processed_data, pressure_st
     # включая 00 00 (всё выключено), чтобы показать переходы в выключенное состояние
     graph_data = [entry for entry in processed_data
                   if entry[1] in ["2F 4B 12 03", "6F 4B 12 03", "62 4B 12"]]
+
+    if IGNORE_RESPONSES_IN_GRAPH:
+       graph_data = [e for e in graph_data if e[5] != "Response"]
+
     print(f"[GraphDebug] Filtered graph data: {len(graph_data)} valve command entries (from {len(processed_data)} total)")
 
     if not graph_data:
