@@ -1815,8 +1815,17 @@ def create_valve_timeline_graph(directory, filename, processed_data, pressure_st
 
         # Set Y-axis ticks and labels
         y_ticks = [len(VALVE_ORDER) - idx for idx in range(len(VALVE_ORDER))]
+
+        # Create labels with "pump" instead of "pu"
+        y_labels = []
+        for valve in VALVE_ORDER:
+            if valve == "pu":
+                y_labels.append("pump")
+            else:
+                y_labels.append(valve)
+
         ax.set_yticks(y_ticks)
-        ax.set_yticklabels(VALVE_ORDER, fontsize=12, fontweight='bold')
+        ax.set_yticklabels(y_labels, fontsize=12, fontweight='bold')
 
         # Labels and title
         ax.set_xlabel('Time (seconds)', fontsize=14, fontweight='bold')
@@ -1837,7 +1846,10 @@ def create_valve_timeline_graph(directory, filename, processed_data, pressure_st
 
         for valve in VALVE_ORDER:
             legend_handles.append(plt.Line2D([0], [0], color=VALVE_COLORS[valve], linewidth=3))
-            legend_labels.append(valve)
+            if valve == "pu":
+                legend_labels.append("pump")
+            else:
+                legend_labels.append(valve)
 
         # Add Extended Session to legend if present
         if ADD_EXS_AND_TP and ext_session_markers:

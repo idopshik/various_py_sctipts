@@ -67,6 +67,7 @@ import pandas as pd
 from tqdm import tqdm
 from pathlib import Path
 from datetime import datetime
+from canlib import canlib
 
 # ANSI цветовые коды
 COLOR_RED = "\033[91m"
@@ -79,12 +80,11 @@ COLOR_RESET = "\033[0m"
 # Флаг для подмены команд - выключение неактивной диагонали
 REPLACE_CMD = True
 
-BLF_FILE_PATH = "./log_to_replay/XTAGA0000T0014007.xlsx"
-#  BLF_FILE_PATH = "./log_to_replay/xjo_dynamic_OK.blf"
+#  BLF_FILE_PATH = "./log_to_replay/XTAGA0000T0014007.xlsx"
+BLF_FILE_PATH = "/home/st/tmptmp/Roller_bench_12025_11_18_13_25_30_xjo_dynamic_OK.blf"
 
 
 
-from canlib import canlib
 
 def check_kvaser_hardware():
     """Проверяет наличие реального Kvaser адаптера через CANlib"""
@@ -404,6 +404,54 @@ def read_can_messages(file_path):
         print(f"{COLOR_YELLOW}Поддерживаемые форматы: .blf, .xlsx, .xls{COLOR_RESET}")
         return []
 
+def create_can_bus(use_virtual=False, channel=0, bitrate=500000):
+    """Create CAN bus with comprehensive error handling"""
+    bus = None
+
+    try:
+        if use_virtual:
+            print(f"{COLOR_WHITE}Попытка подключения к VIRTUAL каналу {channel}...{COLOR_RESET}")
+            bus = can.Bus(
+                interface='kvaser',
+                channel=channel,
+                bitrate=bitrate,
+                accept_virtual=True,
+                receive_own_messages=False,
+                fd=False,  # Disable CAN-FD
+                data_bitrate=bitrate,
+                sjw=1
+            )
+        else:
+            print(f"{COLOR_WHITE}Попытка подключения к физическому каналу {channel}...{COLOR_RESET}")
+            bus = can.Bus(
+                interface='kvaser',
+                channel=channel,
+                bitrate=bitrate,
+                receive_own_messages=False,
+                fd=False,  # Disable CAN-FD
+                data_bitrate=bitrate
+            )
+
+    except Exception as e:
+        print(f"{COLOR_RED}Ошибка Kvaser инициализации: {e}{COLOR_RESET}")
+
+        # Fallback to virtual if hardware fails
+        if not use_virtual:
+            print(f"{COLOR_YELLOW}Попытка использовать виртуальный канал...{COLOR_RESET}")
+            try:
+                bus = can.Bus(
+                    interface='kvaser',
+                    channel=channel,
+                    bitrate=bitrate,
+                    accept_virtual=True,
+                    receive_own_messages=False
+                )
+                print(f"{COLOR_GREEN}Успешно подключен к виртуальному каналу{COLOR_RESET}")
+            except Exception as e2:
+                print(f"{COLOR_RED}Виртуальный канал также не доступен: {e2}{COLOR_RESET}")
+
+    return bus
+
 def replay_740_760(use_virtual=False):
     """Проигрывание только сообщений 0x740 с ожиданием ответов 0x760"""
 
@@ -439,14 +487,12 @@ def replay_740_760(use_virtual=False):
         print(f"{COLOR_WHITE}Найдено запросов 0x740: {total_requests}{COLOR_RESET}")
 
         # Подключение к CAN-шине
-        if use_virtual:
-            bus = can.Bus(interface='kvaser', channel=channel, bitrate=bitrate,
-                         accept_virtual=True, receive_own_messages=False)
-            print(f"{COLOR_WHITE}Подключение к Kvaser VIRTUAL channel {channel}{COLOR_RESET}")
-        else:
-            bus = can.Bus(interface='kvaser', channel=channel, bitrate=bitrate,
-                         receive_own_messages=False)
-            print(f"{COLOR_WHITE}Подключение к Kvaser channel {channel}{COLOR_RESET}")
+
+        bus = create_can_bus(use_virtual=use_virtual, channel=channel, bitrate=bitrate)
+
+        if bus is None:
+            print(f"{COLOR_RED}Не удалось инициализировать CAN шину{COLOR_RESET}")
+            return
 
         with bus:
             print(f"{COLOR_YELLOW}Проигрывание только 0x740 -> 0x760{COLOR_RESET}")
