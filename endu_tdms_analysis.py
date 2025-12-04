@@ -29,176 +29,6 @@ import time        # Убедитесь, что time импортирован
 CURRENT_SCALE = 60
 
 
-class SignalManager:
-    """Класс для управления названиями и цветами сигналов"""
-
-    # Стандартные цвета для разных типов сигналов
-    DEFAULT_COLORS = {
-        'motor_current': '#FF0000',  # Красный
-        'ecu_current': '#0000FF',    # Синий
-        'pressure_rl': '#FFA500',    # Оранжевый
-        'pressure_fr': '#008000',    # Зеленый
-        'pressure_fl': '#800080',    # Фиолетовый
-        'pressure_rr': '#00FFFF',    # Голубой
-        'pressure_mc': '#FF00FF',    # Пурпурный
-        'temperature': '#FF4500',    # Оранжево-красный
-        'voltage': '#FFD700',        # Золотой
-        'speed': '#4B0082',          # Индиго
-        'default': '#A9A9A9'         # Темно-серый
-    }
-
-    # Сопоставление паттернов с типами сигналов
-    SIGNAL_PATTERNS = {
-        'motor_current': ['motor.*current', 'mtr.*curr'],
-        'ecu_current': ['ecu.*current', 'ecu.*curr'],
-        'pressure_rl': ['.*rl.*press', '.*rear.*left.*press'],
-        'pressure_fr': ['.*fr.*press', '.*front.*right.*press'],
-        'pressure_fl': ['.*fl.*press', '.*front.*left.*press'],
-        'pressure_rr': ['.*rr.*press', '.*rear.*right.*press'],
-        'pressure_mc': ['.*mc.*press', '.*master.*cylinder.*press'],
-        'temperature': ['.*temp', '.*temperature'],
-        'voltage': ['.*volt', '.*voltage'],
-        'speed': ['.*speed', '.*rpm', '.*velocity']
-    }
-
-    def __init__(self):
-        self.custom_names = {}
-        self.custom_colors = {}
-        self.signal_info = {}  # Информация о всех найденных сигналах
-
-    def analyze_signals(self, df_columns):
-        """Анализирует колонки DataFrame и определяет типы сигналов"""
-        import re
-
-        self.signal_info = {}
-
-        for col in df_columns:
-            col_lower = col.lower()
-            signal_type = 'other'
-            color = self.DEFAULT_COLORS.get('default')
-
-            # Ищем соответствие паттернам
-            for sig_type, patterns in self.SIGNAL_PATTERNS.items():
-                for pattern in patterns:
-                    if re.search(pattern, col_lower, re.IGNORECASE):
-                        signal_type = sig_type
-                        color = self.DEFAULT_COLORS.get(sig_type, self.DEFAULT_COLORS['default'])
-                        break
-                if signal_type != 'other':
-                    break
-
-            # Сохраняем информацию о сигнале
-            self.signal_info[col] = {
-                'original_name': col,
-                'detected_type': signal_type,
-                'color': color,
-                'display_name': self.get_display_name(col, signal_type),
-                'is_current': 'current' in signal_type,
-                'is_pressure': 'pressure' in signal_type
-            }
-
-        return self.signal_info
-
-    def get_display_name(self, original_name, signal_type):
-        """Генерирует читаемое имя для сигнала"""
-        # Упрощаем длинные имена
-        name = original_name
-
-        # Удаляем общие префиксы
-        prefixes = ['/', 'Station one/', 'Station two/', 'Station three/', 'TDMS_LOG.']
-        for prefix in prefixes:
-            if name.startswith(prefix):
-                name = name[len(prefix):]
-
-        # Упрощаем в зависимости от типа
-        if signal_type == 'motor_current':
-            return 'Motor Current'
-        elif signal_type == 'ecu_current':
-            return 'ECU Current'
-        elif 'pressure' in signal_type:
-            # Извлекаем специфичную часть для давления
-            if '_' in signal_type:
-                pressure_type = signal_type.split('_')[1].upper()
-                return f'Pressure {pressure_type}'
-
-        # Сокращаем слишком длинные имена
-        if len(name) > 30:
-            parts = name.split('/')
-            if len(parts) > 1:
-                name = parts[-1]
-
-        return name[:40]  # Ограничиваем длину
-
-    def set_custom_name(self, original_name, custom_name):
-        """Устанавливает пользовательское имя для сигнала"""
-        if original_name in self.signal_info:
-            self.signal_info[original_name]['display_name'] = custom_name
-            self.custom_names[original_name] = custom_name
-
-    def set_custom_color(self, original_name, color):
-        """Устанавливает пользовательский цвет для сигнала"""
-        if original_name in self.signal_info:
-            self.signal_info[original_name]['color'] = color
-            self.custom_colors[original_name] = color
-
-    def get_signal_color(self, original_name):
-        """Получает цвет для сигнала"""
-        if original_name in self.custom_colors:
-            return self.custom_colors[original_name]
-
-        if original_name in self.signal_info:
-            return self.signal_info[original_name]['color']
-
-        return self.DEFAULT_COLORS['default']
-
-    def get_signal_display_name(self, original_name):
-        """Получает отображаемое имя сигнала"""
-        if original_name in self.custom_names:
-            return self.custom_names[original_name]
-
-        if original_name in self.signal_info:
-            return self.signal_info[original_name]['display_name']
-
-        return original_name
-
-    def get_current_signals(self):
-        """Возвращает все сигналы тока"""
-        return {name: info for name, info in self.signal_info.items()
-                if info['is_current']}
-
-    def get_pressure_signals(self):
-        """Возвращает все сигналы давления"""
-        return {name: info for name, info in self.signal_info.items()
-                if info['is_pressure']}
-
-    def print_signal_summary(self):
-        """Выводит сводку по сигналам"""
-        print(f"\n{'='*60}")
-        print("СВОДКА ПО СИГНАЛАМ:")
-        print(f"{'='*60}")
-
-        current_signals = self.get_current_signals()
-        pressure_signals = self.get_pressure_signals()
-        other_signals = {name: info for name, info in self.signal_info.items()
-                        if not info['is_current'] and not info['is_pressure']}
-
-        print(f"\nТОКИ ({len(current_signals)}):")
-        for name, info in current_signals.items():
-            print(f"  {info['display_name']} ({name})")
-            print(f"    Тип: {info['detected_type']}, Цвет: {info['color']}")
-
-        print(f"\nДАВЛЕНИЯ ({len(pressure_signals)}):")
-        for name, info in pressure_signals.items():
-            print(f"  {info['display_name']} ({name})")
-            print(f"    Тип: {info['detected_type']}, Цвет: {info['color']}")
-
-        if other_signals:
-            print(f"\nДРУГИЕ СИГНАЛЫ ({len(other_signals)}):")
-            for name, info in other_signals.items():
-                print(f"  {info['display_name']} ({name})")
-                print(f"    Тип: {info['detected_type']}, Цвет: {info['color']}")
-
-        print(f"\n{'='*60}")
 
 
 class FileCheckWorker(QObject):
@@ -1990,145 +1820,147 @@ class Endurance_tdms_logs_dealer:
 
     def endu_tdms_log_handler(self, tdms_file_path, gui_instance, temp_dir):
         """
-        Метод для обработки отдельного TDMS файла с разноцветными графиками
+        Упрощенный метод обработки файла с разноцветными графиками
         """
-        print(f"Обработчик вызван для файла: {tdms_file_path}")
+        print(f"Обработка файла: {os.path.basename(tdms_file_path)}")
 
         try:
-            # Загрузка TDMS файла
+            # Загрузка файла
             tdms_file = TdmsFile.read(tdms_file_path)
             df = tdms_file.as_dataframe()
 
-            # Анализируем сигналы через менеджер
-            print(f"\nАнализ сигналов в файле: {os.path.basename(tdms_file_path)}")
+            # Простой анализ сигналов
+            print("\nАнализ сигналов...")
             signal_info = self.signal_manager.analyze_signals(df.columns.tolist())
+            self.signal_manager.print_summary()
 
-            # Выводим сводку
-            self.signal_manager.print_signal_summary()
-
-            # Фильтрация колонок
-            all_columns = df.columns.tolist()
-
-            # Идентификация колонок через менеджер сигналов
-            time_col = next((col for col in all_columns if 'time' in col.lower()), None)
-            if time_col is None:
-                print("Столбец 'time' не найден")
+            # Временная колонка
+            time_col = next((col for col in df.columns if 'time' in col.lower()), None)
+            if not time_col:
+                print("Временная колонка не найдена!")
                 return None
 
-            # Получаем сигналы по категориям
-            current_signals = self.signal_manager.get_current_signals()
-            pressure_signals = self.signal_manager.get_pressure_signals()
+            # Получаем сигналы для построения
+            plot_signals = []
+            for col, info in signal_info.items():
+                if info['detected_type'] != 'other':
+                    plot_signals.append((col, info))
 
-            print(f"\nДля графика будет использовано:")
-            print(f"  Токов: {len(current_signals)}")
-            print(f"  Давлений: {len(pressure_signals)}")
-
-            if not current_signals and not pressure_signals:
-                print("Нет данных для построения графика")
+            if not plot_signals:
+                print("Нет интересных сигналов для графика")
                 return None
 
-            # Расчет энергии для токов
-            voltage = 12.0
-            total_energy = 0.0
+            print(f"\nБудем строить {len(plot_signals)} сигналов")
 
-            energy_by_signal = {}
-            for signal_name, info in current_signals.items():
-                try:
-                    energy, _, _, _, _ = self.calculate_energy_joules(df, time_col, signal_name, voltage)
-                    energy_by_signal[info['display_name']] = energy
-                    total_energy += energy
-                    print(f"  {info['display_name']}: {energy:.1f} Дж")
-                except Exception as e:
-                    print(f"  Ошибка расчета энергии для {signal_name}: {e}")
-
-            # Построение графика с разноцветными линиями
+            # Создаем график с двумя осями Y
             fig, ax1 = plt.subplots(figsize=(14, 8))
 
-            # Графики токов (левая ось)
+            # Разделяем сигналы по типам для разных осей
+            current_signals = [(col, info) for col, info in plot_signals if info['is_current']]
+            pressure_signals = [(col, info) for col, info in plot_signals if info['is_pressure']]
+            voltage_signals = [(col, info) for col, info in plot_signals if info['detected_type'] == 'voltage']
+
+            # Рисуем токи на основной оси (левая)
+            for col, info in current_signals:
+                ax1.plot(df[time_col], df[col],
+                        label=info['display_name'],
+                        color=info['color'],
+                        linewidth=2)
+
             ax1.set_xlabel('Time (s)', fontsize=12)
             ax1.set_ylabel('Current (A)', color='black', fontsize=12)
-
-            # Используем разные цвета для каждого сигнала тока
-            for signal_name, info in current_signals.items():
-                display_name = info['display_name']
-                color = info['color']
-                ax1.plot(df[time_col], df[signal_name],
-                        label=display_name,
-                        color=color,
-                        linewidth=1.5,
-                        alpha=0.8)
-
-            ax1.set_ylim(0, CURRENT_SCALE)
             ax1.tick_params(axis='y', labelcolor='black')
+            ax1.set_ylim(0, CURRENT_SCALE)
 
-            # Легенда для токов
-            if current_signals:
-                ax1.legend(loc='upper left', fontsize=10, ncol=2)
-
-            # Графики давлений (правая ось), если есть
+            # Создаем вторую ось для давления
             if pressure_signals:
                 ax2 = ax1.twinx()
                 ax2.set_ylabel('Pressure (bar)', color='black', fontsize=12)
 
-                # Используем разные цвета для каждого сигнала давления
-                pressure_colors = ['orange', 'green', 'purple', 'cyan', 'magenta', 'brown']
-                color_idx = 0
+                for col, info in pressure_signals:
+                    ax2.plot(df[time_col], df[col],
+                            label=info['display_name'],
+                            color=info['color'],
+                            linewidth=2,
+                            linestyle='--')
 
-                for signal_name, info in pressure_signals.items():
-                    display_name = info['display_name']
-                    color = info['color']
-                    ax2.plot(df[time_col], df[signal_name],
-                            label=display_name,
-                            color=color,
-                            linewidth=1.5,
-                            linestyle='--',
-                            alpha=0.8)
-                    color_idx = (color_idx + 1) % len(pressure_colors)
-
-                ax2.set_ylim(0, 250)
+                ax2.set_ylim(-5, 250)
                 ax2.tick_params(axis='y', labelcolor='black')
 
-                # Легенда для давлений
-                ax2.legend(loc='upper right', fontsize=10, ncol=2)
+            # Создаем третью ось для напряжения (если нужно)
+            if voltage_signals and not pressure_signals:
+                ax3 = ax1.twinx()
+                ax3.set_ylabel('Voltage (V)', color='black', fontsize=12)
 
-            # Заголовок с именем файла
+                for col, info in voltage_signals:
+                    ax3.plot(df[time_col], df[col],
+                            label=info['display_name'],
+                            color=info['color'],
+                            linewidth=1.5,
+                            linestyle=':')
+
+                ax3.set_ylim(0, 20)
+                ax3.tick_params(axis='y', labelcolor='black')
+
+            # Заголовок
             plt.title(f"TDMS Analysis: {os.path.basename(tdms_file_path)}", fontsize=14, fontweight='bold')
 
+            # Легенда
+            handles1, labels1 = ax1.get_legend_handles_labels()
+            all_handles = handles1
+            all_labels = labels1
+
+            if pressure_signals:
+                handles2, labels2 = ax2.get_legend_handles_labels()
+                all_handles.extend(handles2)
+                all_labels.extend(labels2)
+
+            if voltage_signals and not pressure_signals:
+                handles3, labels3 = ax3.get_legend_handles_labels()
+                all_handles.extend(handles3)
+                all_labels.extend(labels3)
+
+            if all_handles:
+                fig.legend(all_handles, all_labels, loc='upper center',
+                          bbox_to_anchor=(0.5, -0.05), ncol=4, fontsize=10)
+
             # Сетка
-            ax1.grid(True, alpha=0.3, linestyle='--')
+            ax1.grid(True, alpha=0.2, linestyle='--')
 
-            # Информационная табличка
-            if energy_by_signal:
-                energy_text = "Energy (J):\n"
-                for signal_name, energy in energy_by_signal.items():
-                    energy_text += f"{signal_name}: {energy:.1f}\n"
+            # Расчет и отображение энергии
+            voltage = 12.0  # Предполагаемое напряжение
+            energy_text = "Energy (J):\n"
+            total_energy = 0.0
+
+            for col, info in current_signals:
+                try:
+                    energy, _, _, _, _ = self.calculate_energy_joules(df, time_col, col, voltage)
+                    energy_text += f"{info['display_name']}: {energy:.1f}\n"
+                    total_energy += energy
+                except:
+                    pass
+
+            if total_energy > 0:
                 energy_text += f"Total: {total_energy:.1f}"
-
-                props = dict(boxstyle='round', facecolor='white', alpha=0.8)
-                plt.text(0.95, 0.05, energy_text, transform=ax1.transAxes, fontsize=9,
-                        verticalalignment='bottom', horizontalalignment='right',
+                props = dict(boxstyle='round', facecolor='white', alpha=0.9)
+                plt.text(0.95, 0.95, energy_text, transform=ax1.transAxes, fontsize=9,
+                        verticalalignment='top', horizontalalignment='right',
                         bbox=props, family='monospace')
 
             # Оптимизируем layout
-            plt.tight_layout()
+            plt.tight_layout(rect=[0, 0.1, 1, 0.95])
 
-            # Сохранение графика
+            # Сохраняем
             plot_filename = f"plot_{os.path.basename(tdms_file_path).replace('.tdms', '')}.png"
             plot_path = os.path.join(temp_dir, plot_filename)
             plt.savefig(plot_path, dpi=150, bbox_inches='tight')
             plt.close()
 
             print(f"График сохранен: {plot_path}")
-
-            # Проверка флага отмены
-            if gui_instance.stop_processing or self._cancel:
-                print("Обработка файла прервана")
-                return None
-
             return plot_path
 
         except Exception as e:
-            print(f"Ошибка при обработке файла {tdms_file_path}: {e}")
+            print(f"Ошибка: {e}")
             import traceback
             traceback.print_exc()
             return None
@@ -2444,6 +2276,103 @@ class Endurance_tdms_logs_dealer:
         except Exception as e:
             print(f"Ошибка при открытии HTML файла: {e}")
             return False
+
+
+
+class SignalManager:
+    """Класс для управления названиями и цветами сигналов"""
+
+    # Стандартные цвета для разных типов сигналов
+    DEFAULT_COLORS = {
+        'motor_current': '#FF0000',  # Красный
+        'ecu_current': '#0000FF',    # Синий
+        'pressure_mc': '#FF4500',    # Красно-оранжевый
+        'pressure_rl': '#32CD32',    # Лаймовый
+        'pressure_fr': '#1E90FF',    # Синий доджер
+        'pressure_fl': '#FF1493',    # Глубокий розовый
+        'pressure_rr': '#FFD700',    # Золотой
+        'voltage': '#9370DB',        # Фиолетовый
+        'default': '#A9A9A9'         # Серый
+    }
+
+    def __init__(self):
+        self.signal_info = {}
+
+    def analyze_signals(self, df_columns):
+        """Простой анализ сигналов"""
+        self.signal_info = {}
+
+        for col in df_columns:
+            col_lower = col.lower()
+            signal_type = 'other'
+            color = self.DEFAULT_COLORS['default']
+
+            # Определяем тип сигнала и цвет
+            if 'motor current' in col_lower:
+                signal_type = 'motor_current'
+                color = self.DEFAULT_COLORS['motor_current']
+            elif 'ecu current' in col_lower:
+                signal_type = 'ecu_current'
+                color = self.DEFAULT_COLORS['ecu_current']
+            elif 'ecu voltage' in col_lower:
+                signal_type = 'voltage'
+                color = self.DEFAULT_COLORS['voltage']
+            elif 'mc-(p1)' in col_lower:
+                signal_type = 'pressure_mc'
+                color = '#FF4500'  # Красно-оранжевый для MC
+            elif 'rl-(p2)' in col_lower:
+                signal_type = 'pressure_rl'
+                color = '#32CD32'  # Лаймовый для RL
+            elif 'fr-(p3)' in col_lower:
+                signal_type = 'pressure_fr'
+                color = '#1E90FF'  # Синий доджер для FR
+            elif 'fl-(p4)' in col_lower:
+                signal_type = 'pressure_fl'
+                color = '#FF1493'  # Глубокий розовый для FL
+            elif 'rr-(p5)' in col_lower:
+                signal_type = 'pressure_rr'
+                color = '#FFD700'  # Золотой для RR
+
+            # Простое отображаемое имя
+            display_name = col
+            if 'station two' in col_lower:
+                if 'mc-(p1)' in col_lower:
+                    display_name = 'MC Pressure'
+                elif 'rl-(p2)' in col_lower:
+                    display_name = 'RL Pressure'
+                elif 'fr-(p3)' in col_lower:
+                    display_name = 'FR Pressure'
+                elif 'fl-(p4)' in col_lower:
+                    display_name = 'FL Pressure'
+                elif 'rr-(p5)' in col_lower:
+                    display_name = 'RR Pressure'
+                elif 'motor current' in col_lower:
+                    display_name = 'Motor Current'
+                elif 'ecu current' in col_lower:
+                    display_name = 'ECU Current'
+                elif 'ecu voltage' in col_lower:
+                    display_name = 'ECU Voltage'
+
+            self.signal_info[col] = {
+                'original_name': col,
+                'detected_type': signal_type,
+                'color': color,
+                'display_name': display_name,
+                'is_current': signal_type in ['motor_current', 'ecu_current'],
+                'is_pressure': 'pressure' in signal_type
+            }
+
+        return self.signal_info
+
+    def print_summary(self):
+        """Простая сводка"""
+        print("\n" + "="*60)
+        print("ПРОСТАЯ СВОДКА СИГНАЛОВ:")
+        print("="*60)
+
+        for name, info in self.signal_info.items():
+            if info['detected_type'] != 'other':  # Только интересные сигналы
+                print(f"{info['display_name']}: {info['detected_type']}, цвет: {info['color']}")
 
 # Запуск приложения
 if __name__ == "__main__":
