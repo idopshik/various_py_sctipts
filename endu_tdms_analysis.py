@@ -17,7 +17,8 @@ import pandas as pd
 from nptdms import TdmsFile
 import numpy as np
 import matplotlib
-matplotlib.use('Qt5Agg')  # Используем Qt5 бэкенд для matplotlib
+#  matplotlib.use('Qt5Agg')  # Используем Qt5 бэкенд для matplotlib
+matplotlib.use('Agg')  # Неинтерактивный бэкенд
 import matplotlib.pyplot as plt
 import glob
 import tempfile
@@ -1865,7 +1866,8 @@ class Endurance_tdms_logs_dealer:
                 ax1.plot(df[time_col], df[col],
                         label=info['display_name'],
                         color=info['color'],
-                        linewidth=2)
+                        linewidth=2.5,
+                        linestyle='-')  # Сплошная линия
 
             ax1.set_xlabel('Time (s)', fontsize=12)
             ax1.set_ylabel('Current (A)', color='black', fontsize=12)
@@ -1877,12 +1879,13 @@ class Endurance_tdms_logs_dealer:
                 ax2 = ax1.twinx()
                 ax2.set_ylabel('Pressure (bar)', color='black', fontsize=12)
 
-                for col, info in pressure_signals:
+                linestyles = ['-', '--', '-.', ':']  # Разные стили
+                for i, (col, info) in enumerate(pressure_signals):
                     ax2.plot(df[time_col], df[col],
                             label=info['display_name'],
                             color=info['color'],
-                            linewidth=2,
-                            linestyle='--')
+                            linewidth=2.0,
+                            linestyle=linestyles[i % len(linestyles)])  # Чередуем стили
 
                 ax2.set_ylim(-5, 250)
                 ax2.tick_params(axis='y', labelcolor='black')
@@ -1906,23 +1909,37 @@ class Endurance_tdms_logs_dealer:
             plt.title(f"TDMS Analysis: {os.path.basename(tdms_file_path)}", fontsize=14, fontweight='bold')
 
             # Легенда
-            handles1, labels1 = ax1.get_legend_handles_labels()
-            all_handles = handles1
-            all_labels = labels1
+            from matplotlib.lines import Line2D
 
+            # Создаем кастомные элементы для легенды
+            legend_elements = []
+
+            # Для токов
+            for col, info in current_signals:
+                legend_elements.append(
+                    Line2D([0], [0], color=info['color'], lw=3,
+                           label=f"{info['display_name']} (A)", linestyle='-')
+                )
+
+            # Для давлений
             if pressure_signals:
-                handles2, labels2 = ax2.get_legend_handles_labels()
-                all_handles.extend(handles2)
-                all_labels.extend(labels2)
+                for col, info in pressure_signals:
+                    legend_elements.append(
+                        Line2D([0], [0], color=info['color'], lw=3,
+                               label=f"{info['display_name']} (bar)", linestyle='--')
+                    )
 
-            if voltage_signals and not pressure_signals:
-                handles3, labels3 = ax3.get_legend_handles_labels()
-                all_handles.extend(handles3)
-                all_labels.extend(labels3)
+            # Для напряжения
+            if voltage_signals:
+                for col, info in voltage_signals:
+                    legend_elements.append(
+                        Line2D([0], [0], color=info['color'], lw=2,
+                               label=f"{info['display_name']} (V)", linestyle=':')
+                    )
 
-            if all_handles:
-                fig.legend(all_handles, all_labels, loc='upper center',
-                          bbox_to_anchor=(0.5, -0.05), ncol=4, fontsize=10)
+            # Размещаем легенду
+            ax1.legend(handles=legend_elements, loc='upper center',
+                      bbox_to_anchor=(0.5, -0.1), ncol=3, fontsize=9)
 
             # Сетка
             ax1.grid(True, alpha=0.2, linestyle='--')
@@ -1931,6 +1948,22 @@ class Endurance_tdms_logs_dealer:
             voltage = 12.0  # Предполагаемое напряжение
             energy_text = "Energy (J):\n"
             total_energy = 0.0
+
+
+
+
+            # Горизонтальные линии для порогов тока
+            ax1.axhline(y=0.2, color='gray', linestyle=':', alpha=0.5, label='Threshold (200mA)')
+            ax1.axhline(y=1.0, color='red', linestyle=':', alpha=0.5, label='Warning (1A)')
+
+            # Горизонтальные линии для давления
+            if pressure_signals:
+                ax2.axhline(y=100, color='orange', linestyle=':', alpha=0.5, label='100 bar')
+                ax2.axhline(y=150, color='red', linestyle=':', alpha=0.5, label='150 bar')
+
+
+
+
 
             for col, info in current_signals:
                 try:
@@ -1946,6 +1979,21 @@ class Endurance_tdms_logs_dealer:
                 plt.text(0.95, 0.95, energy_text, transform=ax1.transAxes, fontsize=9,
                         verticalalignment='top', horizontalalignment='right',
                         bbox=props, family='monospace')
+
+
+            if current_signals:
+                # Заливка под кривой Motor Current
+                motor_col = None
+                for col, info in current_signals:
+                    if 'Motor' in info['display_name']:
+                        motor_col = col
+                        break
+
+                if motor_col:
+                    ax1.fill_between(df[time_col], 0, df[motor_col],
+                                    alpha=0.2, color='red', label='_nolegend_')
+
+
 
             # Оптимизируем layout
             plt.tight_layout(rect=[0, 0.1, 1, 0.95])
