@@ -157,6 +157,10 @@ def find_valve_activity_period(processed_data):
     active_times = []
     for entry in processed_data:
         line_num, sequence, bytes_val, timediff, valves, req_type, full_line, timestamp_ms = entry
+
+        if 'iRR' in valves:  # или 'iRR' в активных клапанах
+            print(f"[DEBUG] iRR found - Line: {line_num}, Time: {timestamp_ms}, Type: {req_type}, Valves: {valves}")
+
         if valves and timestamp_ms is not None:  # Если есть активные клапаны и валидное время
             active_times.append(timestamp_ms)
 
@@ -1626,119 +1630,44 @@ def show_message(title, message, is_error=False):
 def create_valve_timeline_graph(directory, filename, processed_data, pressure_stats):
     """
     Creates timeline graph showing valve states over time.
-    X-axis: time in seconds
-    Y-axis: valves (each valve has its own line)
-    Lines are thick and colored, at Y=valve_index when active, at Y=0 when inactive
-    Все файлы сохраняются в указанной директории.
-    Улучшенная версия с вертикальными линиями для команд и фильтрацией по периоду активности
+    Упрощенная версия с фокусом на сравнении iRR с другими клапанами.
     """
-    if not WITHGRAPH:
-        print("[TimestampDebug] WITHGRAPH is False, skipping graph creation")
+    if not WITHGRAPH or not processed_data:
         return None
 
-    if not processed_data:
-        print("[TimestampDebug] No data to plot")
-        return None
-
-    print(f"[TimestampDebug] create_valve_timeline_graph called with {len(processed_data)} entries")
-
-    # Для графика используем все записи с командами управления клапанами
-    # включая 00 00 (всё выключено), чтобы показать переходы в выключенное состояние
+    # Фильтруем данные для графика
     graph_data = [entry for entry in processed_data
                   if entry[1] in ["2F 4B 12 03", "6F 4B 12 03", "62 4B 12"]]
 
     if IGNORE_RESPONSES_IN_GRAPH:
        graph_data = [e for e in graph_data if e[5] != "Response"]
 
-    print(f"[GraphDebug] Filtered graph data: {len(graph_data)} valve command entries (from {len(processed_data)} total)")
-
     if not graph_data:
-        print("[GraphDebug] No valve command data to plot")
         return None
 
-    # Определяем период активности клапанов
+    # Определяем период активности
     activity_period = None
     if GRAPH_FOR_MOTOR_ONLY:
         activity_period = find_valve_activity_period(graph_data)
         if activity_period:
             graph_data = filter_data_for_motor_period(graph_data, activity_period)
-            print(f"[MotorActivity] Building graph for motor activity period only: {activity_period}")
-        else:
-            print(f"[MotorActivity] No valve activity found, building full graph")
-
-    # Собираем маркеры Extended Session и Tester Present
-    ext_session_markers = []
-    tester_present_markers = []
-
-    if ADD_EXS_AND_TP:
-        # Сначала посмотрим, что вообще есть в processed_data
-        all_sequences = {}
-        for entry in processed_data:
-            seq = entry[1]
-            all_sequences[seq] = all_sequences.get(seq, 0) + 1
-
-        print(f"[Markers DEBUG] All sequences in processed_data: {all_sequences}")
-
-        # Теперь собираем маркеры
-        for entry in processed_data:
-            line_num, sequence, bytes_val, timediff, valves, req_type, full_line, timestamp_ms = entry
-
-            # Детальная диагностика для первых нескольких 3E/7E
-            if sequence in ["3E", "7E"] and len(tester_present_markers) < 3:
-                print(f"[Markers DEBUG] Found {sequence}: timestamp={timestamp_ms}, req_type={req_type}")
-                if GRAPH_FOR_MOTOR_ONLY and activity_period:
-                    start_time, end_time = activity_period
-                    print(f"[Markers DEBUG]   activity_period: {start_time} - {end_time}")
-                    print(f"[Markers DEBUG]   in range: {start_time <= timestamp_ms <= end_time}")
-
-            if timestamp_ms is None:
-                continue
-
-            # Если GRAPH_FOR_MOTOR_ONLY, фильтруем по периоду активности
-            if GRAPH_FOR_MOTOR_ONLY and activity_period:
-                start_time, end_time = activity_period
-                if timestamp_ms < start_time or timestamp_ms > end_time:
-                    continue
-
-            if sequence in ["10 03", "50 03"]:
-                ext_session_markers.append((timestamp_ms, sequence, req_type))
-            elif sequence in ["3E", "7E"]:
-                tester_present_markers.append((timestamp_ms, sequence, req_type))
-
-        print(f"[Markers] Extended Session markers: {len(ext_session_markers)}")
-        print(f"[Markers] Tester Present markers: {len(tester_present_markers)}")
 
     try:
-        # Extract time series data for each valve
+        # Создаем timeline для клапанов
         valve_timelines = {valve: [] for valve in VALVE_ORDER}
 
-        # Get first timestamp to normalize - используем минимальный из ВСЕХ данных
+        # Находим первый timestamp
         first_timestamp = None
-
-        # Сначала находим минимальный timestamp из всех источников
-        all_timestamps = []
-
-        # Из graph_data
         for entry in graph_data:
-            if entry[7] is not None:  # timestamp_ms
-                all_timestamps.append(entry[7])
+            if entry[7] is not None:
+                if first_timestamp is None or entry[7] < first_timestamp:
+                    first_timestamp = entry[7]
 
-        # Из маркеров (если ADD_EXS_AND_TP)
-        if ADD_EXS_AND_TP:
-            for ts, _, _ in ext_session_markers:
-                all_timestamps.append(ts)
-            for ts, _, _ in tester_present_markers:
-                all_timestamps.append(ts)
-
-        if all_timestamps:
-            first_timestamp = min(all_timestamps)
-            print(f"[GraphDebug] First timestamp set to: {first_timestamp} (from all data)")
-        else:
-            print("[GraphDebug] Could not find any timestamps")
+        if first_timestamp is None:
             return None
 
-        # Теперь строим timeline для клапанов
-        for idx, entry in enumerate(graph_data):
+        # Заполняем timeline (убираем дубликаты)
+        for entry in graph_data:
             line_num, sequence, bytes_val, timediff, valves, req_type, full_line, timestamp_ms = entry
 
             if timestamp_ms is not None:
@@ -1746,153 +1675,66 @@ def create_valve_timeline_graph(directory, filename, processed_data, pressure_st
 
                 for valve in VALVE_ORDER:
                     is_active = valve in valves
-                    valve_timelines[valve].append((time_sec, is_active))
+                    # Добавляем только если время изменилось или состояние изменилось
+                    if not valve_timelines[valve] or valve_timelines[valve][-1] != (time_sec, is_active):
+                        valve_timelines[valve].append((time_sec, is_active))
 
-        if first_timestamp is None:
-            print("[GraphDebug] Could not parse timestamps - first_timestamp is None")
-            return None
-
-        # Create figure
+        # ОСНОВНОЙ ГРАФИК
         fig, ax = plt.subplots(figsize=(16, 10), dpi=150)
 
-        # Plot each valve
+        # Простой алгоритм построения - steps-post для четких переходов
         for idx, valve in enumerate(VALVE_ORDER):
             timeline = valve_timelines[valve]
             if not timeline:
                 continue
 
-            times = []
-            values = []
+            times = [t for t, active in timeline]
+            states = [len(VALVE_ORDER) - idx if active else 0 for t, active in timeline]
 
-            for time_sec, is_active in timeline:
-                times.append(time_sec)
-                values.append(len(VALVE_ORDER) - idx if is_active else 0)
-
-            ax.plot(times, values,
+            ax.plot(times, states,
                    drawstyle='steps-post',
                    color=VALVE_COLORS[valve],
                    linewidth=3,
                    label=valve,
                    alpha=0.8)
 
-        # Set Y limits
+        # Настройки графика
         ax.set_ylim(-0.5, len(VALVE_ORDER) + 0.5)
-        y_min, y_max = ax.get_ylim()
 
-        # Draw Extended Session markers
-        if ADD_EXS_AND_TP and ext_session_markers:
-            for timestamp_ms, sequence, req_type in ext_session_markers:
-                time_sec = (timestamp_ms - first_timestamp) / 1000.0
-
-                if "10" in sequence:  # Request
-                    color = 'green'
-                    linestyle = '--'
-                else:  # Response (50)
-                    color = 'darkgreen'
-                    linestyle = ':'
-
-                ax.axvline(x=time_sec, color=color, linestyle=linestyle,
-                          alpha=0.6, linewidth=1.5)
-
-        # Draw Tester Present markers (optional - may be too many)
-        # Uncomment if you want to see them:
-        # Draw Tester Present markers
-        if ADD_EXS_AND_TP and tester_present_markers:
-            print(f"[TP Draw] Drawing {len(tester_present_markers)} Tester Present markers")
-            print(f"[TP Draw] first_timestamp = {first_timestamp}")
-
-            for i, (timestamp_ms, sequence, req_type) in enumerate(tester_present_markers):
-                time_sec = (timestamp_ms - first_timestamp) / 1000.0
-
-                if i < 5:  # Показываем первые 5
-                    print(f"[TP Draw] Marker {i}: timestamp={timestamp_ms}, time_sec={time_sec:.3f}")
-
-                ax.axvline(x=time_sec, color='gray', linestyle=':', alpha=0.7, linewidth=1)
-
-            # Проверяем границы графика
-            x_min, x_max = ax.get_xlim()
-            print(f"[TP Draw] Graph X limits: {x_min:.3f} to {x_max:.3f}")
-
-        # Set Y-axis ticks and labels
         y_ticks = [len(VALVE_ORDER) - idx for idx in range(len(VALVE_ORDER))]
-
-        # Create labels with "pump" instead of "pu"
-        y_labels = []
-        for valve in VALVE_ORDER:
-            if valve == "pu":
-                y_labels.append("pump")
-            else:
-                y_labels.append(valve)
+        y_labels = ["pump" if valve == "pu" else valve for valve in VALVE_ORDER]
 
         ax.set_yticks(y_ticks)
         ax.set_yticklabels(y_labels, fontsize=12, fontweight='bold')
-
-        # Labels and title
         ax.set_xlabel('Time (seconds)', fontsize=14, fontweight='bold')
         ax.set_ylabel('Valves', fontsize=14, fontweight='bold')
 
+        title = f'Valve Activity Timeline - {filename}'
         if GRAPH_FOR_MOTOR_ONLY and activity_period:
-            title = f'Valve Activity Timeline - {filename} (Motor Activity Period Only)'
             duration_sec = (activity_period[1] - activity_period[0]) / 1000
-            ax.set_title(f'{title}\nDuration: {duration_sec:.1f}s', fontsize=16, fontweight='bold')
-        else:
-            ax.set_title(f'Valve Activity Timeline - {filename}', fontsize=16, fontweight='bold')
+            title += f' (Motor Activity Period Only)\nDuration: {duration_sec:.1f}s'
+        ax.set_title(title, fontsize=16, fontweight='bold')
 
         ax.grid(True, alpha=0.3, linestyle='--')
 
-        # Legend
-        legend_handles = []
-        legend_labels = []
+        # Легенда
+        legend_handles = [plt.Line2D([0], [0], color=VALVE_COLORS[valve], linewidth=3)
+                         for valve in VALVE_ORDER]
+        legend_labels = ["pump" if valve == "pu" else valve for valve in VALVE_ORDER]
+        ax.legend(legend_handles, legend_labels, loc='center left', bbox_to_anchor=(1, 0.5), fontsize=10)
 
-        for valve in VALVE_ORDER:
-            legend_handles.append(plt.Line2D([0], [0], color=VALVE_COLORS[valve], linewidth=3))
-            if valve == "pu":
-                legend_labels.append("pump")
-            else:
-                legend_labels.append(valve)
-
-        # Add Extended Session to legend if present
-        if ADD_EXS_AND_TP and ext_session_markers:
-            legend_handles.append(plt.Line2D([0], [0], color='green', linestyle='--', linewidth=1.5))
-            legend_labels.append('Extended Session')
-
-        if legend_handles:
-            ax.legend(legend_handles, legend_labels, loc='center left', bbox_to_anchor=(1, 0.5), fontsize=10)
-
-        # Pressure build time table
-        if pressure_stats and pressure_stats['build']:
-            table_text = "Pressure Build Time:\n"
-            for wheel in ['FL', 'FR', 'RL', 'RR']:
-                time_val = pressure_stats['build'][wheel]
-                table_text += f"{wheel}: {time_val:.3f}s\n"
-
-            if ADD_EXS_AND_TP:
-                table_text += f"\nExt Session: {len(ext_session_markers)}"
-                table_text += f"\nTester Present: {len(tester_present_markers)}"
-
-            ax.text(0.98, 0.02, table_text,
-                   transform=ax.transAxes,
-                   fontsize=11,
-                   verticalalignment='bottom',
-                   horizontalalignment='right',
-                   bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.8, pad=0.5),
-                   family='monospace',
-                   fontweight='bold')
-
-        plt.tight_layout()
-
-        # Save figure
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        if GRAPH_FOR_MOTOR_ONLY and activity_period:
-            graph_filename = f"valve_timeline_{filename}_MOTOR_ONLY_{timestamp}.png"
-        else:
-            graph_filename = f"valve_timeline_{filename}_{timestamp}.png"
+        # Сохраняем основной график
+        timestamp_str = datetime.now().strftime("%Y%m%d_%H%M%S")
+        graph_filename = f"valve_timeline_{filename}_{timestamp_str}.png"
         graph_path = os.path.join(directory, graph_filename)
-
         plt.savefig(graph_path, dpi=150, bbox_inches='tight')
         plt.close()
 
-        print(f"[GraphDebug] Created timeline graph: {graph_path}")
+        print(f"[GraphDebug] Created main timeline graph: {graph_path}")
+
+        # ДОПОЛНИТЕЛЬНО: ГРАФИК СРАВНЕНИЯ i-КЛАПАНОВ
+        create_inlet_valves_comparison(directory, filename, valve_timelines, timestamp_str)
+
         return graph_path
 
     except Exception as e:
@@ -1900,6 +1742,191 @@ def create_valve_timeline_graph(directory, filename, processed_data, pressure_st
         import traceback
         traceback.print_exc()
         return None
+
+
+def create_inlet_valves_comparison(directory, filename, valve_timelines, timestamp_str):
+    """Создает график сравнения впускных клапанов (iFL, iFR, iRL, iRR)"""
+    try:
+        print(f"\n[INLET COMPARISON] Creating inlet valves comparison graph")
+
+        fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(14, 10), dpi=150)
+
+        inlet_valves = ['iFL', 'iFR', 'iRL', 'iRR']
+        inlet_colors = ['#0088FF', '#0044FF', '#8800FF', '#FF00FF']  # Синие/фиолетовые для впускных
+
+        # ОСНОВНОЙ ВИД - все 4 впускных клапана
+        for idx, valve in enumerate(inlet_valves):
+            timeline = valve_timelines[valve]
+            if not timeline:
+                continue
+
+            times = [t for t, active in timeline]
+            states = [idx + 1 if active else 0 for t, active in timeline]  # Разные уровни для каждого
+
+            ax1.plot(times, states,
+                    drawstyle='steps-post',
+                    color=inlet_colors[idx],
+                    linewidth=4,
+                    label=valve,
+                    alpha=0.9)
+
+        ax1.set_ylim(0, len(inlet_valves) + 0.5)
+        ax1.set_yticks(range(1, len(inlet_valves) + 1))
+        ax1.set_yticklabels(inlet_valves, fontsize=12, fontweight='bold')
+        ax1.set_ylabel('Inlet Valves', fontsize=14, fontweight='bold')
+        ax1.set_title(f'Inlet Valves Comparison - {filename}', fontsize=16, fontweight='bold')
+        ax1.grid(True, alpha=0.3, linestyle='--')
+        ax1.legend(loc='upper right')
+
+        # ZOOM НА ОБЛАСТЬ ПЕРВЫХ ВЫКЛЮЧЕНИЙ (7-8 секунд)
+        for idx, valve in enumerate(inlet_valves):
+            timeline = valve_timelines[valve]
+            if not timeline:
+                continue
+
+            times = [t for t, active in timeline]
+            states = [idx + 1 if active else 0 for t, active in timeline]
+
+            ax2.plot(times, states,
+                    drawstyle='steps-post',
+                    color=inlet_colors[idx],
+                    linewidth=4,
+                    label=valve,
+                    alpha=0.9)
+
+        # ZOOM на область 7-8 секунд (где первые выключения)
+        ax2.set_xlim(7.0, 8.0)
+        ax2.set_ylim(0, len(inlet_valves) + 0.5)
+        ax2.set_yticks(range(1, len(inlet_valves) + 1))
+        ax2.set_yticklabels(inlet_valves, fontsize=12, fontweight='bold')
+        ax2.set_xlabel('Time (seconds)', fontsize=14, fontweight='bold')
+        ax2.set_ylabel('Inlet Valves', fontsize=14, fontweight='bold')
+        ax2.set_title('Zoom: First Shutdowns (7.0-8.0 seconds)', fontsize=14, fontweight='bold')
+        ax2.grid(True, alpha=0.3, linestyle='--')
+
+        # Анализ и аннотация выключений в zoom области
+        print(f"\n[SHUTDOWN ANALYSIS in 7-8s range]:")
+        for valve in inlet_valves:
+            timeline = valve_timelines[valve]
+            if timeline:
+                shutdowns = []
+                for i in range(1, len(timeline)):
+                    prev_time, prev_active = timeline[i-1]
+                    curr_time, curr_active = timeline[i]
+
+                    # Выключение в диапазоне 7-8 секунд
+                    if prev_active and not curr_active and 7.0 <= curr_time <= 8.0:
+                        duration = curr_time - prev_time
+                        shutdowns.append((prev_time, curr_time, duration))
+
+                        # Аннотация на графике
+                        valve_idx = inlet_valves.index(valve) + 1
+                        ax2.axvline(x=curr_time, color='red', linestyle='--', alpha=0.6, linewidth=1)
+                        ax2.text(curr_time, valve_idx - 0.2, f'{duration*1000:.0f}ms',
+                                fontsize=8, color='red', ha='center')
+
+                        print(f"  {valve}: shutdown at {curr_time:.3f}s, duration: {duration:.3f}s ({duration*1000:.0f}ms)")
+
+        plt.tight_layout()
+
+        # Сохраняем график сравнения
+        comparison_path = os.path.join(directory, f"inlet_valves_comparison_{filename}_{timestamp_str}.png")
+        plt.savefig(comparison_path, dpi=150, bbox_inches='tight')
+        plt.close()
+
+        print(f"[ComparisonDebug] Created inlet valves comparison: {comparison_path}")
+
+    except Exception as e:
+        print(f"[ComparisonDebug] Error creating comparison graph: {e}")
+
+
+def create_zoom_graph(directory, filename, valve_timelines, first_timestamp, timestamp):
+    """Создает увеличенный график для анализа выключений клапанов"""
+    try:
+        print(f"\n[ZOOM DEBUG] Creating zoomed graph for shutdown analysis")
+
+        fig_zoom, ax_zoom = plt.subplots(figsize=(12, 8), dpi=150)
+
+        # Тот же алгоритм построения, но для zoom области
+        for idx, valve in enumerate(VALVE_ORDER):
+            timeline = valve_timelines[valve]
+            if not timeline:
+                continue
+
+            times = []
+            states = []
+
+            for i, (time_sec, is_active) in enumerate(timeline):
+                current_state = len(VALVE_ORDER) - idx if is_active else 0
+
+                if i == 0:
+                    times.append(time_sec)
+                    states.append(current_state)
+                else:
+                    prev_time, prev_active = timeline[i-1]
+                    prev_state = len(VALVE_ORDER) - idx if prev_active else 0
+
+                    if prev_active != is_active:
+                        times.append(time_sec)
+                        states.append(prev_state)
+                        times.append(time_sec)
+                        states.append(current_state)
+                    else:
+                        times.append(time_sec)
+                        states.append(current_state)
+
+            if times:
+                ax_zoom.plot(times, states,
+                           drawstyle='steps-pre',
+                           color=VALVE_COLORS[valve],
+                           linewidth=2,
+                           label=valve,
+                           alpha=0.8)
+
+        # ZOOM на область первых выключений i-клапанов (примерно 9.0-9.5s)
+        ax_zoom.set_xlim(8.8, 9.8)
+        ax_zoom.set_ylim(-0.5, len(VALVE_ORDER) + 0.5)
+
+        # Анализируем и отмечаем выключения
+        print(f"\n[SHUTDOWN ANALYSIS]")
+        for valve in ['iFL', 'iFR', 'iRL', 'iRR']:
+            if valve in valve_timelines:
+                timeline = valve_timelines[valve]
+                shutdowns = []
+
+                for i in range(1, len(timeline)):
+                    prev_time, prev_active = timeline[i-1]
+                    curr_time, curr_active = timeline[i]
+
+                    # Если перешли из активного в неактивное - это выключение
+                    if prev_active and not curr_active and 8.8 <= curr_time <= 9.8:
+                        duration = curr_time - prev_time
+                        shutdowns.append((prev_time, curr_time, duration))
+
+                        # Отмечаем на графике
+                        ax_zoom.axvline(x=curr_time, color='red', linestyle='--', alpha=0.7, linewidth=1)
+                        ax_zoom.text(curr_time, VALVE_ORDER.index(valve) + 0.3, f'{valve} OFF\n{duration*1000:.0f}ms',
+                                    rotation=90, verticalalignment='bottom', fontsize=8, color='red')
+
+                if shutdowns:
+                    first_shutdown = shutdowns[0]
+                    print(f"{valve}: First shutdown at {first_shutdown[1]:.3f}s, Duration: {first_shutdown[2]:.3f}s ({(first_shutdown[2]*1000):.0f}ms)")
+
+        ax_zoom.set_xlabel('Time (seconds) - ZOOM VIEW')
+        ax_zoom.set_ylabel('Valves')
+        ax_zoom.set_title(f'Valve Shutdown Analysis - {filename}\n(First shutdowns around 9.2s)')
+        ax_zoom.grid(True, alpha=0.3)
+        ax_zoom.legend(loc='upper right')
+
+        # Сохраняем zoom график
+        zoom_graph_path = os.path.join(directory, f"valve_SHUTDOWN_ZOOM_{filename}_{timestamp}.png")
+        plt.savefig(zoom_graph_path, dpi=150, bbox_inches='tight')
+        plt.close(fig_zoom)
+
+        print(f"[ZoomDebug] Created shutdown analysis graph: {zoom_graph_path}")
+
+    except Exception as e:
+        print(f"[ZoomDebug] Error creating zoom graph: {e}")
 
 # Добавляем таблицу команд в отчет
 def get_command_reference_table():
