@@ -27,16 +27,26 @@ import plotly.graph_objects as go
 import subprocess  # Добавьте этот импорт
 import time        # Убедитесь, что time импортирован
 
-CURRENT_SCALE = 60
+
+
+
+# ============================================================================
+# НАСТРОЙКИ ГРАФИКОВ
+# ============================================================================
 
 # Пределы осей
-CURRENT_UPPER_LIMIT = 60      # Максимальное значение на оси тока (А)
-PRESSURE_UPPER_LIMIT = 250    # Максимальное значение на оси давления (бар)
+CURRENT_SCALE = 60
+CURRENT_UPPER_LIMIT = 40      # Уменьшили для лучшего обзора (маленькие токи)
+PRESSURE_UPPER_LIMIT = 100    # Уменьшили для тормозных цилиндров
 
 # Что отображать
-ENERGY_CALCULATION = False    # Показывать расчет энергии
-SHOW_VOLTAGES = False         # Показывать напряжения
-SHOW_PRESSURE_THRESHOLDS = False  # Показывать пороги давления (100, 150 бар)
+ENERGY_CALCULATION = False    # Показывать расчет энергии (ВЫКЛЮЧЕНО)
+SHOW_VOLTAGES = False         # Показывать напряжения (ВЫКЛЮЧЕНО)
+SHOW_PRESSURE_THRESHOLDS = False  # Показывать пороги давления (100, 150 бар) - ВЫКЛ
+SHOW_PRESSURE_ANALYSIS = True  # Показывать анализ давления (макс, скорость роста) - ВКЛ
+
+# Пороги для анализа давления
+PRESSURE_LOWER_THRESHOLD = 20.0  # Порог для анализа скорости роста (бар)
 
 # Стили линий
 SHOW_GRID = True              # Показывать сетку
@@ -44,7 +54,7 @@ LEGEND_POSITION = 'upper center'  # Положение легенды
 
 # Обрезка логов
 SKIP_AT_START = 0.0           # Пропустить секунд в начале лога
-SKIP_AT_END = 0.0             # Пропустить секунд в конце лога
+SKIP_AT_END = 0.0             # Пропустить секунд в конце логаKIP_AT_END = 0.0             # Пропустить секунд в конце лога
 
 
 
@@ -1903,8 +1913,230 @@ class Endurance_tdms_logs_dealer:
 
 
 
+    def add_pressure_analysis_table(self, ax, pressure_stats):
+        """
+        Современная плоская таблица
+        """
+        if not pressure_stats or not SHOW_PRESSURE_ANALYSIS:
+            return
+
+        # Используем box-drawing символы для чистой таблицы
+        lines = []
+
+        # Современный заголовок
+        lines.append("▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄")
+        lines.append("  PRESSURE ANALYSIS")
+        lines.append("▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀")
+        lines.append("")
+        lines.append(" Wheel   Max    Rise    Events")
+        lines.append("         (bar) (bar/s)        ")
+        lines.append("──────────────────────────────")
+
+        wheel_order = ['FL Pressure', 'FR Pressure', 'RL Pressure', 'RR Pressure']
+
+        for wheel in wheel_order:
+            if wheel in pressure_stats:
+                stats = pressure_stats[wheel]
+                analysis = stats['analysis']
+
+                wheel_short = wheel.replace(' Pressure', '')
+                max_pressure = f"{analysis['max_pressure']:6.1f}"
+
+                if analysis['pressure_growth_rate']:
+                    # Цветовая индикация скорости
+                    rate = analysis['pressure_growth_rate']
+                    if rate > 20:
+                        rate_indicator = "↑ "  # Быстрый рост
+                    elif rate > 10:
+                        rate_indicator = "→ "  # Средний рост
+                    else:
+                        rate_indicator = "↗ "  # Медленный рост
+                    growth_rate = f"{rate_indicator}{rate:5.1f}"
+                else:
+                    growth_rate = "   N/A"
+
+                event_count = len(stats['events'])
+
+                # Чистое форматирование
+                line = f"  {wheel_short:2s}    {max_pressure:>6}  {growth_rate:>7}    {event_count:>3d}"
+                lines.append(line)
+
+        lines.append("──────────────────────────────")
+
+        # Компактная сводка
+        total_events = sum(len(pressure_stats[wheel]['events'])
+                          for wheel in wheel_order if wheel in pressure_stats)
+        wheels_active = sum(1 for wheel in wheel_order
+                           if wheel in pressure_stats and
+                           pressure_stats[wheel]['analysis']['has_significant_pressure'])
+
+        # Индикатор активности
+        activity_bar = "█" * wheels_active + "░" * (4 - wheels_active)
+
+        lines.append(f" Threshold: {PRESSURE_LOWER_THRESHOLD:3.0f} bar")
+        lines.append(f" Events: {total_events:2d}  [{activity_bar}]")
+
+        textstr = "\n".join(lines)
+
+        # Современное оформление
+        props = dict(boxstyle='round', facecolor='white', alpha=0.97,
+                    edgecolor='#e0e0e0', linewidth=1.5,
+                    pad=0.5)
+
+        ax.text(0.98, 0.98, textstr, transform=ax.transAxes, fontsize=8.5,
+                verticalalignment='top', horizontalalignment='right',
+                bbox=props, family='DejaVu Sans Mono',
+                color='#2c3e50')
 
 
+    def analyze_pressure_signal(self, time_data, pressure_data, signal_name):
+        """
+        Анализирует сигнал давления и возвращает статистику
+        """
+        if len(time_data) < 2 or len(pressure_data) < 2:
+            return None
+
+        # Базовые статистики
+        max_pressure = np.max(pressure_data)
+        max_pressure_time = time_data[np.argmax(pressure_data)]
+        avg_pressure = np.mean(pressure_data)
+
+        result = {
+            'signal_name': signal_name,
+            'max_pressure': max_pressure,
+            'max_pressure_time': max_pressure_time,
+            'avg_pressure': avg_pressure,
+            'has_significant_pressure': max_pressure > PRESSURE_LOWER_THRESHOLD,
+            'pressure_growth_rate': None,
+            'rise_time': None,
+            'peak_index': None
+        }
+
+        # Если давление было значительным, анализируем скорость роста
+        if result['has_significant_pressure']:
+            # Находим индекс максимального давления
+            peak_idx = np.argmax(pressure_data)
+
+            # Ищем точку начала роста (когда давление впервые превышает 5% от максимума)
+            threshold_start = max_pressure * 0.05
+            start_idx = None
+
+            # Ищем назад от пика
+            for i in range(peak_idx, 0, -1):
+                if pressure_data[i] <= threshold_start:
+                    start_idx = i
+                    break
+
+            # Если не нашли начало, берем первый индекс
+            if start_idx is None:
+                start_idx = 0
+
+            # Рассчитываем скорость роста
+            if peak_idx > start_idx:
+                pressure_rise = pressure_data[peak_idx] - pressure_data[start_idx]
+                time_rise = time_data[peak_idx] - time_data[start_idx]
+
+                if time_rise > 0:
+                    result['pressure_growth_rate'] = pressure_rise / time_rise  # бар/сек
+                    result['rise_time'] = time_rise
+                    result['start_pressure'] = pressure_data[start_idx]
+                    result['start_time'] = time_data[start_idx]
+                    result['peak_index'] = peak_idx
+                    result['start_index'] = start_idx
+
+        return result
+
+    def find_pressure_events(self, time_data, pressure_data, threshold=5.0):
+        """
+        Находит события повышения давления
+        """
+        if len(pressure_data) < 2:
+            return []
+
+        events = []
+        in_event = False
+        event_start_idx = 0
+
+        for i in range(1, len(pressure_data)):
+            # Начало события: давление превысило порог
+            if not in_event and pressure_data[i] > threshold:
+                in_event = True
+                event_start_idx = i
+
+            # Конец события: давление упало ниже порога
+            elif in_event and pressure_data[i] < threshold:
+                in_event = False
+                event_end_idx = i - 1
+
+                # Рассчитываем параметры события
+                event_max = np.max(pressure_data[event_start_idx:event_end_idx+1])
+                event_duration = time_data[event_end_idx] - time_data[event_start_idx]
+
+                if event_duration > 0 and event_max > PRESSURE_LOWER_THRESHOLD:
+                    events.append({
+                        'start_idx': event_start_idx,
+                        'end_idx': event_end_idx,
+                        'start_time': time_data[event_start_idx],
+                        'end_time': time_data[event_end_idx],
+                        'max_pressure': event_max,
+                        'duration': event_duration
+                    })
+
+        # Если событие продолжается до конца данных
+        if in_event:
+            event_end_idx = len(pressure_data) - 1
+            event_max = np.max(pressure_data[event_start_idx:])
+            event_duration = time_data[event_end_idx] - time_data[event_start_idx]
+
+            if event_duration > 0 and event_max > PRESSURE_LOWER_THRESHOLD:
+                events.append({
+                    'start_idx': event_start_idx,
+                    'end_idx': event_end_idx,
+                    'start_time': time_data[event_start_idx],
+                    'end_time': time_data[event_end_idx],
+                    'max_pressure': event_max,
+                    'duration': event_duration
+                })
+
+        return events
+
+    def calculate_pressure_statistics(self, df, time_col, pressure_signals):
+        """
+        Рассчитывает статистику по всем сигналам давления (кроме MC)
+        """
+        if not pressure_signals:
+            return {}
+
+        statistics = {}
+
+        for col, info in pressure_signals:
+            # ИГНОРИРУЕМ MC Pressure - не интересует
+            if 'pressure' in info['detected_type'] and 'MC' not in info['display_name']:
+                try:
+                    # Получаем данные
+                    time_data = df[time_col].values
+                    pressure_data = df[col].values
+
+                    # Базовый анализ
+                    analysis = self.analyze_pressure_signal(time_data, pressure_data, info['display_name'])
+
+                    if analysis:
+                        # Находим события
+                        events = self.find_pressure_events(time_data, pressure_data)
+
+                        # Сохраняем результаты
+                        statistics[info['display_name']] = {
+                            'analysis': analysis,
+                            'events': events,
+                            'color': info['color'],
+                            'signal_type': info['detected_type'],
+                            'original_name': col
+                        }
+
+                except Exception as e:
+                    print(f"Ошибка анализа давления {info['display_name']}: {e}")
+
+        return statistics
 
 
 
@@ -1949,13 +2181,28 @@ class Endurance_tdms_logs_dealer:
 
             print(f"\nБудем строить {len(plot_signals)} сигналов")
 
-            # Создаем график с двумя осями Y
-            fig, ax1 = plt.subplots(figsize=(14, 8))
-
             # Разделяем сигналы по типам
             current_signals = [(col, info) for col, info in plot_signals if info['is_current']]
             pressure_signals = [(col, info) for col, info in plot_signals if info['is_pressure']]
             voltage_signals = [(col, info) for col, info in plot_signals if info['is_voltage']]
+
+            # Анализ давления (если включено)
+            pressure_stats = {}
+            if SHOW_PRESSURE_ANALYSIS and pressure_signals:
+                print("\nАнализ давления...")
+                pressure_stats = self.calculate_pressure_statistics(df, time_col, pressure_signals)
+
+                # Выводим результаты в консоль
+                for wheel, stats in pressure_stats.items():
+                    analysis = stats['analysis']
+                    print(f"\n{wheel}:")
+                    print(f"  Макс. давление: {analysis['max_pressure']:.1f} бар")
+                    if analysis['pressure_growth_rate']:
+                        print(f"  Скорость роста: {analysis['pressure_growth_rate']:.1f} бар/сек")
+                    print(f"  Событий: {len(stats['events'])}")
+
+            # Создаем график с двумя осями Y
+            fig, ax1 = plt.subplots(figsize=(16, 10))  # Увеличили для таблицы
 
             # Рисуем токи на основной оси (левая)
             for col, info in current_signals:
@@ -1975,12 +2222,26 @@ class Endurance_tdms_logs_dealer:
                 ax2.set_ylabel('Pressure (bar)', color='black', fontsize=12)
 
                 linestyles = ['-', '--', '-.', ':']
-                for i, (col, info) in enumerate(pressure_signals):
-                    ax2.plot(df[time_col], df[col],
-                            label=info['display_name'],
-                            color=info['color'],
-                            linewidth=2,
-                            linestyle=linestyles[i % len(linestyles)])
+                style_idx = 0
+
+                for col, info in pressure_signals:
+                    # Рисуем ТОЛЬКО рабочие цилиндры (не MC)
+                    if 'MC' not in info['display_name']:
+                        ax2.plot(df[time_col], df[col],
+                                label=info['display_name'],
+                                color=info['color'],
+                                linewidth=2,
+                                linestyle=linestyles[style_idx % len(linestyles)])
+                        style_idx += 1
+
+                        # Отмечаем максимальное давление на графике (если включен анализ)
+                        if SHOW_PRESSURE_ANALYSIS and info['display_name'] in pressure_stats:
+                            stats = pressure_stats[info['display_name']]
+                            analysis = stats['analysis']
+
+                            # Точка максимального давления
+                            ax2.plot(analysis['max_pressure_time'], analysis['max_pressure'],
+                                    'o', color=stats['color'], markersize=8, markeredgecolor='black')
 
                 ax2.set_ylim(-5, PRESSURE_UPPER_LIMIT)
                 ax2.tick_params(axis='y', labelcolor='black')
@@ -1989,6 +2250,11 @@ class Endurance_tdms_logs_dealer:
                 if SHOW_PRESSURE_THRESHOLDS:
                     ax2.axhline(y=100, color='orange', linestyle=':', alpha=0.5, label='100 bar')
                     ax2.axhline(y=150, color='red', linestyle=':', alpha=0.5, label='150 bar')
+
+                # Линия порога для анализа
+                if SHOW_PRESSURE_ANALYSIS:
+                    ax2.axhline(y=PRESSURE_LOWER_THRESHOLD, color='gray',
+                               linestyle='--', alpha=0.3, label=f'Threshold ({PRESSURE_LOWER_THRESHOLD} bar)')
 
             # Создаем ось для напряжения (только если включено)
             if voltage_signals and SHOW_VOLTAGES:
@@ -2015,6 +2281,8 @@ class Endurance_tdms_logs_dealer:
                 settings_info.append("No Energy")
             if not SHOW_VOLTAGES:
                 settings_info.append("No Voltage")
+            if SHOW_PRESSURE_ANALYSIS:
+                settings_info.append("Pressure Analysis")
             if SKIP_AT_START > 0 or SKIP_AT_END > 0:
                 settings_info.append(f"Trim: +{SKIP_AT_START}/-{SKIP_AT_END}s")
             if settings_info:
@@ -2047,9 +2315,17 @@ class Endurance_tdms_logs_dealer:
                 all_handles.extend(threshold_handles)
                 all_labels.extend(['100 bar', '150 bar'])
 
+            if SHOW_PRESSURE_ANALYSIS and pressure_signals:
+                # Добавляем линию порога анализа
+                from matplotlib.lines import Line2D
+                threshold_handle = Line2D([0], [0], color='gray', linestyle='--',
+                                         label=f'Analysis Threshold ({PRESSURE_LOWER_THRESHOLD} bar)')
+                all_handles.append(threshold_handle)
+                all_labels.append(f'Analysis Threshold ({PRESSURE_LOWER_THRESHOLD} bar)')
+
             if all_handles:
                 fig.legend(all_handles, all_labels, loc=LEGEND_POSITION,
-                          bbox_to_anchor=(0.5, -0.05), ncol=4, fontsize=9)
+                          bbox_to_anchor=(0.5, -0.05), ncol=4, fontsize=8)
 
             # Сетка (только если включено)
             if SHOW_GRID:
@@ -2076,8 +2352,12 @@ class Endurance_tdms_logs_dealer:
                             verticalalignment='top', horizontalalignment='right',
                             bbox=props, family='monospace')
 
-            # Оптимизируем layout
-            plt.tight_layout(rect=[0, 0.1, 1, 0.95])
+            # Таблица анализа давления (если включено)
+            if SHOW_PRESSURE_ANALYSIS and pressure_stats:
+                self.add_pressure_analysis_table(ax1, pressure_stats)
+
+            # Оптимизируем layout (больше места снизу для легенды)
+            plt.tight_layout(rect=[0, 0.12, 1, 0.95])
 
             # Сохраняем
             plot_filename = f"plot_{os.path.basename(tdms_file_path).replace('.tdms', '')}.png"
