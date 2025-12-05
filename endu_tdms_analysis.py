@@ -2286,7 +2286,6 @@ class Endurance_tdms_logs_dealer:
             if SKIP_AT_START > 0 or SKIP_AT_END > 0:
                 settings_info.append(f"Trim: +{SKIP_AT_START}/-{SKIP_AT_END}s")
             if settings_info:
-                title += f" [{', '.join(settings_info)}]"
 
             plt.title(title, fontsize=14, fontweight='bold')
 
@@ -2527,7 +2526,9 @@ class Endurance_tdms_logs_dealer:
             # Настройка layout
             title = f"Interactive: {os.path.basename(file_path)}"
             if SKIP_AT_START > 0 or SKIP_AT_END > 0:
-                title += f" (Trim: +{SKIP_AT_START}/-{SKIP_AT_END}s)"
+                print("[DEBUG] scipped from berinning {SKIP_AT_START} s.")
+                print("[DEBUG] scipped at the end SKIP_AT_END} s.")
+                #  title += f" (Trim: +{SKIP_AT_START}/-{SKIP_AT_END}s)"
 
             layout_updates = {
                 'title': title,
