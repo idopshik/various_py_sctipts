@@ -34,6 +34,22 @@ import time        # Убедитесь, что time импортирован
 # НАСТРОЙКИ ГРАФИКОВ
 # ============================================================================
 
+
+# ============================================================================
+# НАСТРОЙКИ ВИЗУАЛЬНОГО ОФОРМЛЕНИЯ
+# ============================================================================
+
+# Размеры и отступы
+PLOT_TITLE_FONTSIZE = 14
+TABLE_FONTSIZE = 10.4
+LEGEND_FONTSIZE = 9
+LEGEND_DISTANCE = 0.05    # Положительное - внутри графика
+PLOT_BOTTOM_MARGIN = 0.12 # 12% места снизу - УВЕЛИЧЬТЕ для легенды
+
+# Шрифты
+TABLE_FONT_FAMILY = 'monospace'  # Моноширинный для таблиц
+PLOT_FONT_FAMILY = 'DejaVu Sans' # Основной шрифт для графиков
+
 # Пределы осей
 CURRENT_SCALE = 60
 CURRENT_UPPER_LIMIT = 40      # Уменьшили для лучшего обзора (маленькие токи)
@@ -1339,7 +1355,7 @@ class Endurance_tdms_logs_dealer:
             ax1.set_ylabel('Current (A)')
             ax1.set_title('Current Signals')
             ax1.set_ylim(0, CURRENT_SCALE)
-            ax1.legend()
+            ax1.legend(fontsize=LEGEND_FONTSIZE)
             ax1.grid(True, alpha=0.3)
 
             # Строим графики накопленной энергии
@@ -1352,7 +1368,7 @@ class Endurance_tdms_logs_dealer:
             ax2.set_xlabel('Time (s)')
             ax2.set_ylabel('Cumulative Energy (J)')
             ax2.set_title('Cumulative Energy Consumption')
-            ax2.legend()
+            ax2.legend(fontsize=LEGEND_FONTSIZE)
             ax2.grid(True, alpha=0.3)
 
             # Добавляем информационную табличку справа внизу (поднимем выше)
@@ -1915,22 +1931,22 @@ class Endurance_tdms_logs_dealer:
 
     def add_pressure_analysis_table(self, ax, pressure_stats):
         """
-        Современная плоская таблица
+        Современная таблица анализа давления с плоским дизайном
         """
         if not pressure_stats or not SHOW_PRESSURE_ANALYSIS:
             return
 
-        # Используем box-drawing символы для чистой таблицы
+        # Подготавливаем данные для таблицы
         lines = []
 
-        # Современный заголовок
-        lines.append("▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄")
-        lines.append("  PRESSURE ANALYSIS")
-        lines.append("▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀")
-        lines.append("")
-        lines.append(" Wheel   Max    Rise    Events")
-        lines.append("         (bar) (bar/s)        ")
-        lines.append("──────────────────────────────")
+        # Заголовок таблицы с эмодзи
+        lines.append("PRESSURE ANALYSIS")
+        lines.append("─" * 35)
+
+        # Шапка таблицы
+        lines.append("Wheel     Max      ΔP/Δt")
+        lines.append("         (bar)   (bar/s)")
+        lines.append("─" * 35)
 
         wheel_order = ['FL Pressure', 'FR Pressure', 'RL Pressure', 'RR Pressure']
 
@@ -1940,53 +1956,64 @@ class Endurance_tdms_logs_dealer:
                 analysis = stats['analysis']
 
                 wheel_short = wheel.replace(' Pressure', '')
+
+                # Максимальное давление
                 max_pressure = f"{analysis['max_pressure']:6.1f}"
 
+                # Скорость роста давления
                 if analysis['pressure_growth_rate']:
-                    # Цветовая индикация скорости
-                    rate = analysis['pressure_growth_rate']
-                    if rate > 20:
-                        rate_indicator = "↑ "  # Быстрый рост
-                    elif rate > 10:
-                        rate_indicator = "→ "  # Средний рост
+                    if analysis['pressure_growth_rate'] > 0:
+                        growth_rate = f"▲{analysis['pressure_growth_rate']:6.1f}"
                     else:
-                        rate_indicator = "↗ "  # Медленный рост
-                    growth_rate = f"{rate_indicator}{rate:5.1f}"
+                        growth_rate = f"▼{abs(analysis['pressure_growth_rate']):6.1f}"
                 else:
-                    growth_rate = "   N/A"
+                    growth_rate = "    -    "
 
-                event_count = len(stats['events'])
-
-                # Чистое форматирование
-                line = f"  {wheel_short:2s}    {max_pressure:>6}  {growth_rate:>7}    {event_count:>3d}"
+                # Формируем строку
+                line = f"{wheel_short:4}    {max_pressure:>6}   {growth_rate:>8}"
                 lines.append(line)
 
-        lines.append("──────────────────────────────")
+        lines.append("─" * 35)
 
-        # Компактная сводка
-        total_events = sum(len(pressure_stats[wheel]['events'])
-                          for wheel in wheel_order if wheel in pressure_stats)
-        wheels_active = sum(1 for wheel in wheel_order
-                           if wheel in pressure_stats and
-                           pressure_stats[wheel]['analysis']['has_significant_pressure'])
+        # Статистика внизу
+        wheels_with_pressure = sum(1 for wheel in wheel_order
+                                  if wheel in pressure_stats and
+                                  pressure_stats[wheel]['analysis']['has_significant_pressure'])
 
-        # Индикатор активности
-        activity_bar = "█" * wheels_active + "░" * (4 - wheels_active)
+        if wheels_with_pressure > 0:
+            lines.append(f"Active: {wheels_with_pressure}/4 wheels")
+            lines.append(f"Threshold: {PRESSURE_LOWER_THRESHOLD:.1f} bar")
 
-        lines.append(f" Threshold: {PRESSURE_LOWER_THRESHOLD:3.0f} bar")
-        lines.append(f" Events: {total_events:2d}  [{activity_bar}]")
-
+        # Собираем весь текст
         textstr = "\n".join(lines)
 
-        # Современное оформление
-        props = dict(boxstyle='round', facecolor='white', alpha=0.97,
-                    edgecolor='#e0e0e0', linewidth=1.5,
-                    pad=0.5)
+        # Стиль для современного плоского дизайна
+        props = dict(
+            boxstyle='round,pad=0.5',
+            facecolor='#f8f9fa',  # Светло-серый фон
+            edgecolor='#dee2e6',  # Светло-серая граница
+            linewidth=1.5,
+            alpha=0.95
+        )
 
-        ax.text(0.98, 0.98, textstr, transform=ax.transAxes, fontsize=8.5,
+        # Пробуем разные шрифты по порядку
+        font_families = [
+            'Arial',           # Windows стандарт
+            'Segoe UI',        # Современный Windows
+            'Calibri',         # Чистый и читаемый
+            'Verdana',         # Хорошо читается
+            'Tahoma',          # Компактный
+            'DejaVu Sans',     # Fallback для Linux
+            'sans-serif'       # Ultimate fallback
+        ]
+
+        # Увеличиваем размер шрифта для лучшей читаемости
+        fontsize = 10
+
+        # Добавляем на график
+        ax.text(0.98, 0.98, textstr, transform=ax.transAxes, fontsize=fontsize,
                 verticalalignment='top', horizontalalignment='right',
-                bbox=props, family='DejaVu Sans Mono',
-                color='#2c3e50')
+                bbox=props, family=font_families[0])  # Начинаем с Arial
 
 
     def analyze_pressure_signal(self, time_data, pressure_data, signal_name):
@@ -2211,15 +2238,16 @@ class Endurance_tdms_logs_dealer:
                         color=info['color'],
                         linewidth=2)
 
-            ax1.set_xlabel('Time (s)', fontsize=12)
-            ax1.set_ylabel('Current (A)', color='black', fontsize=12)
+            # Подписи осей (можно тоже настроить)
+            ax1.set_xlabel('Time (s)', fontsize=12, family=PLOT_FONT_FAMILY)
+            ax1.set_ylabel('Current (A)', color='black', fontsize=12, family=PLOT_FONT_FAMILY)
             ax1.tick_params(axis='y', labelcolor='black')
             ax1.set_ylim(0, CURRENT_UPPER_LIMIT)
 
             # Создаем вторую ось для давления
             if pressure_signals:
                 ax2 = ax1.twinx()
-                ax2.set_ylabel('Pressure (bar)', color='black', fontsize=12)
+                ax2.set_ylabel('Pressure (bar)', color='black', fontsize=12, family=PLOT_FONT_FAMILY)
 
                 linestyles = ['-', '--', '-.', ':']
                 style_idx = 0
@@ -2286,8 +2314,7 @@ class Endurance_tdms_logs_dealer:
             if SKIP_AT_START > 0 or SKIP_AT_END > 0:
                 settings_info.append(f"Trim: +{SKIP_AT_START}/-{SKIP_AT_END}s")
             if settings_info:
-
-            plt.title(title, fontsize=14, fontweight='bold')
+                plt.title(title, fontsize=PLOT_TITLE_FONTSIZE, fontweight='bold', family=PLOT_FONT_FAMILY)
 
             # Легенда
             handles1, labels1 = ax1.get_legend_handles_labels()
@@ -2322,9 +2349,10 @@ class Endurance_tdms_logs_dealer:
                 all_handles.append(threshold_handle)
                 all_labels.append(f'Analysis Threshold ({PRESSURE_LOWER_THRESHOLD} bar)')
 
+            # Легенда
             if all_handles:
                 fig.legend(all_handles, all_labels, loc=LEGEND_POSITION,
-                          bbox_to_anchor=(0.5, -0.05), ncol=4, fontsize=8)
+                          bbox_to_anchor=(0.5, LEGEND_DISTANCE), ncol=4, fontsize=LEGEND_FONTSIZE)
 
             # Сетка (только если включено)
             if SHOW_GRID:
@@ -2356,7 +2384,13 @@ class Endurance_tdms_logs_dealer:
                 self.add_pressure_analysis_table(ax1, pressure_stats)
 
             # Оптимизируем layout (больше места снизу для легенды)
-            plt.tight_layout(rect=[0, 0.12, 1, 0.95])
+            fig.subplots_adjust(
+                left=0.08,      # Отступ слева
+                right=0.92,     # Отступ справа
+                top=0.90,       # Отступ сверху
+                bottom=PLOT_BOTTOM_MARGIN,  # ← Используем настройку!
+                hspace=0.30     # Расстояние между осями
+            )
 
             # Сохраняем
             plot_filename = f"plot_{os.path.basename(tdms_file_path).replace('.tdms', '')}.png"
@@ -2530,13 +2564,22 @@ class Endurance_tdms_logs_dealer:
                 print("[DEBUG] scipped at the end SKIP_AT_END} s.")
                 #  title += f" (Trim: +{SKIP_AT_START}/-{SKIP_AT_END}s)"
 
+            # В create_interactive_plot тоже можно добавить шрифты:
             layout_updates = {
                 'title': title,
                 'xaxis_title': 'Time (s)',
                 'yaxis_title': 'Current (A)',
-                'legend': dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1),
+                'legend': dict(
+                    orientation='h',
+                    yanchor='bottom',
+                    y=1.02,  # ← Это аналог LEGEND_DISTANCE для Plotly
+                    xanchor='right',
+                    x=1,
+                    font=dict(size=LEGEND_FONTSIZE)  # ← Добавьте размер шрифта
+                ),
                 'margin': dict(t=100),
-                'hovermode': 'x unified'
+                'hovermode': 'x unified',
+                'font': dict(family=PLOT_FONT_FAMILY, size=12)
             }
 
             # Ограничения осей
