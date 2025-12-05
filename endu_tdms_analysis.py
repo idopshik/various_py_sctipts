@@ -29,6 +29,19 @@ import time        # Убедитесь, что time импортирован
 
 CURRENT_SCALE = 60
 
+# Пределы осей
+CURRENT_UPPER_LIMIT = 60      # Максимальное значение на оси тока (А)
+PRESSURE_UPPER_LIMIT = 250    # Максимальное значение на оси давления (бар)
+
+# Что отображать
+ENERGY_CALCULATION = False    # Показывать расчет энергии
+SHOW_VOLTAGES = False         # Показывать напряжения
+SHOW_PRESSURE_THRESHOLDS = False  # Показывать пороги давления (100, 150 бар)
+
+# Стили линий
+SHOW_GRID = True              # Показывать сетку
+LEGEND_POSITION = 'upper center'  # Положение легенды
+
 
 
 
@@ -930,6 +943,42 @@ class Endurance_tdms_logs_dealer:
                 print(f"Ошибка при открытии: {e}")
                 return False
 
+    def open_html_file_with_fallback(self, html_path):
+        """Универсальный метод открытия HTML файлов"""
+        import platform
+        import subprocess
+
+        print(f"\nПопытка открыть: {html_path}")
+
+        if not os.path.exists(html_path):
+            print(f"Файл не найден!")
+            return False
+
+        abs_path = os.path.abspath(html_path)
+
+        if platform.system().lower() == 'linux':
+            try:
+                subprocess.Popen(['xdg-open', abs_path])
+                print("Отправлена команда xdg-open")
+                return True
+            except Exception as e:
+                print(f"Ошибка xdg-open: {e}")
+                try:
+                    webbrowser.open(f'file://{abs_path}')
+                    return True
+                except Exception as e2:
+                    print(f"Ошибка webbrowser: {e2}")
+        else:
+            try:
+                webbrowser.open(f'file://{abs_path}')
+                return True
+            except Exception as e:
+                print(f"Ошибка: {e}")
+
+        print(f"\nОткройте файл вручную: {abs_path}")
+        return False
+
+
     def process(self, gui_instance):
         """Основной метод обработки - обход всех TDMS файлов в папке"""
         print(f"Начата обработка папки: {self.folder_path}")
@@ -1821,7 +1870,7 @@ class Endurance_tdms_logs_dealer:
 
     def endu_tdms_log_handler(self, tdms_file_path, gui_instance, temp_dir):
         """
-        Упрощенный метод обработки файла с разноцветными графиками
+        Упрощенный метод обработки файла с настройками
         """
         print(f"Обработка файла: {os.path.basename(tdms_file_path)}")
 
@@ -1856,43 +1905,48 @@ class Endurance_tdms_logs_dealer:
             # Создаем график с двумя осями Y
             fig, ax1 = plt.subplots(figsize=(14, 8))
 
-            # Разделяем сигналы по типам для разных осей
+            # Разделяем сигналы по типам
             current_signals = [(col, info) for col, info in plot_signals if info['is_current']]
             pressure_signals = [(col, info) for col, info in plot_signals if info['is_pressure']]
-            voltage_signals = [(col, info) for col, info in plot_signals if info['detected_type'] == 'voltage']
+            voltage_signals = [(col, info) for col, info in plot_signals if info['is_voltage']]
 
             # Рисуем токи на основной оси (левая)
             for col, info in current_signals:
                 ax1.plot(df[time_col], df[col],
                         label=info['display_name'],
                         color=info['color'],
-                        linewidth=2.5,
-                        linestyle='-')  # Сплошная линия
+                        linewidth=2)
 
             ax1.set_xlabel('Time (s)', fontsize=12)
             ax1.set_ylabel('Current (A)', color='black', fontsize=12)
             ax1.tick_params(axis='y', labelcolor='black')
-            ax1.set_ylim(0, CURRENT_SCALE)
+            ax1.set_ylim(0, CURRENT_UPPER_LIMIT)
 
             # Создаем вторую ось для давления
             if pressure_signals:
                 ax2 = ax1.twinx()
                 ax2.set_ylabel('Pressure (bar)', color='black', fontsize=12)
 
-                linestyles = ['-', '--', '-.', ':']  # Разные стили
+                linestyles = ['-', '--', '-.', ':']
                 for i, (col, info) in enumerate(pressure_signals):
                     ax2.plot(df[time_col], df[col],
                             label=info['display_name'],
                             color=info['color'],
-                            linewidth=2.0,
-                            linestyle=linestyles[i % len(linestyles)])  # Чередуем стили
+                            linewidth=2,
+                            linestyle=linestyles[i % len(linestyles)])
 
-                ax2.set_ylim(-5, 250)
+                ax2.set_ylim(-5, PRESSURE_UPPER_LIMIT)
                 ax2.tick_params(axis='y', labelcolor='black')
 
-            # Создаем третью ось для напряжения (если нужно)
-            if voltage_signals and not pressure_signals:
+                # Пороги давления (только если включено)
+                if SHOW_PRESSURE_THRESHOLDS:
+                    ax2.axhline(y=100, color='orange', linestyle=':', alpha=0.5, label='100 bar')
+                    ax2.axhline(y=150, color='red', linestyle=':', alpha=0.5, label='150 bar')
+
+            # Создаем ось для напряжения (только если включено)
+            if voltage_signals and SHOW_VOLTAGES:
                 ax3 = ax1.twinx()
+                ax3.spines['right'].set_position(('outward', 60))
                 ax3.set_ylabel('Voltage (V)', color='black', fontsize=12)
 
                 for col, info in voltage_signals:
@@ -1906,94 +1960,72 @@ class Endurance_tdms_logs_dealer:
                 ax3.tick_params(axis='y', labelcolor='black')
 
             # Заголовок
-            plt.title(f"TDMS Analysis: {os.path.basename(tdms_file_path)}", fontsize=14, fontweight='bold')
+            title = f"TDMS Analysis: {os.path.basename(tdms_file_path)}"
+
+            # Добавляем информацию о настройках в заголовок
+            settings_info = []
+            if not ENERGY_CALCULATION:
+                settings_info.append("No Energy")
+            if not SHOW_VOLTAGES:
+                settings_info.append("No Voltage")
+            if settings_info:
+                title += f" [{', '.join(settings_info)}]"
+
+            plt.title(title, fontsize=14, fontweight='bold')
 
             # Легенда
-            from matplotlib.lines import Line2D
+            handles1, labels1 = ax1.get_legend_handles_labels()
+            all_handles = handles1
+            all_labels = labels1
 
-            # Создаем кастомные элементы для легенды
-            legend_elements = []
-
-            # Для токов
-            for col, info in current_signals:
-                legend_elements.append(
-                    Line2D([0], [0], color=info['color'], lw=3,
-                           label=f"{info['display_name']} (A)", linestyle='-')
-                )
-
-            # Для давлений
             if pressure_signals:
-                for col, info in pressure_signals:
-                    legend_elements.append(
-                        Line2D([0], [0], color=info['color'], lw=3,
-                               label=f"{info['display_name']} (bar)", linestyle='--')
-                    )
+                handles2, labels2 = ax2.get_legend_handles_labels()
+                all_handles.extend(handles2)
+                all_labels.extend(labels2)
 
-            # Для напряжения
-            if voltage_signals:
-                for col, info in voltage_signals:
-                    legend_elements.append(
-                        Line2D([0], [0], color=info['color'], lw=2,
-                               label=f"{info['display_name']} (V)", linestyle=':')
-                    )
+            if voltage_signals and SHOW_VOLTAGES:
+                handles3, labels3 = ax3.get_legend_handles_labels()
+                all_handles.extend(handles3)
+                all_labels.extend(labels3)
 
-            # Размещаем легенду
-            ax1.legend(handles=legend_elements, loc='upper center',
-                      bbox_to_anchor=(0.5, -0.1), ncol=3, fontsize=9)
+            if SHOW_PRESSURE_THRESHOLDS and pressure_signals:
+                # Добавляем линии порогов в легенду
+                from matplotlib.lines import Line2D
+                threshold_handles = [
+                    Line2D([0], [0], color='orange', linestyle=':', label='100 bar'),
+                    Line2D([0], [0], color='red', linestyle=':', label='150 bar')
+                ]
+                all_handles.extend(threshold_handles)
+                all_labels.extend(['100 bar', '150 bar'])
 
-            # Сетка
-            ax1.grid(True, alpha=0.2, linestyle='--')
+            if all_handles:
+                fig.legend(all_handles, all_labels, loc=LEGEND_POSITION,
+                          bbox_to_anchor=(0.5, -0.05), ncol=4, fontsize=9)
 
-            # Расчет и отображение энергии
-            voltage = 12.0  # Предполагаемое напряжение
-            energy_text = "Energy (J):\n"
-            total_energy = 0.0
+            # Сетка (только если включено)
+            if SHOW_GRID:
+                ax1.grid(True, alpha=0.2, linestyle='--')
 
+            # Расчет и отображение энергии (только если включено)
+            if ENERGY_CALCULATION and current_signals:
+                voltage = 12.0  # Предполагаемое напряжение
+                energy_text = "Energy (J):\n"
+                total_energy = 0.0
 
-
-
-            # Горизонтальные линии для порогов тока
-            ax1.axhline(y=0.2, color='gray', linestyle=':', alpha=0.5, label='Threshold (200mA)')
-            ax1.axhline(y=1.0, color='red', linestyle=':', alpha=0.5, label='Warning (1A)')
-
-            # Горизонтальные линии для давления
-            if pressure_signals:
-                ax2.axhline(y=100, color='orange', linestyle=':', alpha=0.5, label='100 bar')
-                ax2.axhline(y=150, color='red', linestyle=':', alpha=0.5, label='150 bar')
-
-
-
-
-
-            for col, info in current_signals:
-                try:
-                    energy, _, _, _, _ = self.calculate_energy_joules(df, time_col, col, voltage)
-                    energy_text += f"{info['display_name']}: {energy:.1f}\n"
-                    total_energy += energy
-                except:
-                    pass
-
-            if total_energy > 0:
-                energy_text += f"Total: {total_energy:.1f}"
-                props = dict(boxstyle='round', facecolor='white', alpha=0.9)
-                plt.text(0.95, 0.95, energy_text, transform=ax1.transAxes, fontsize=9,
-                        verticalalignment='top', horizontalalignment='right',
-                        bbox=props, family='monospace')
-
-
-            if current_signals:
-                # Заливка под кривой Motor Current
-                motor_col = None
                 for col, info in current_signals:
-                    if 'Motor' in info['display_name']:
-                        motor_col = col
-                        break
+                    try:
+                        energy, _, _, _, _ = self.calculate_energy_joules(df, time_col, col, voltage)
+                        energy_text += f"{info['display_name']}: {energy:.1f}\n"
+                        total_energy += energy
+                    except:
+                        pass
 
-                if motor_col:
-                    ax1.fill_between(df[time_col], 0, df[motor_col],
-                                    alpha=0.2, color='red', label='_nolegend_')
-
-
+                if total_energy > 0:
+                    energy_text += f"Total: {total_energy:.1f}"
+                    props = dict(boxstyle='round', facecolor='white', alpha=0.9)
+                    plt.text(0.95, 0.95, energy_text, transform=ax1.transAxes, fontsize=9,
+                            verticalalignment='top', horizontalalignment='right',
+                            bbox=props, family='monospace')
 
             # Оптимизируем layout
             plt.tight_layout(rect=[0, 0.1, 1, 0.95])
@@ -2074,64 +2106,35 @@ class Endurance_tdms_logs_dealer:
 
 
 
+
     def create_interactive_plot(self, file_path):
-        """
-        Создает интерактивный график только для активного участка и открывает в браузере
-        """
+        """Создает интерактивный график с настройками"""
         print(f"Создание интерактивного графика для: {file_path}")
 
         try:
-            # Проверка флага отмены
-            if self._cancel:
-                print("Обработка прервана перед началом (флаг отмены активен)")
-                return
-
             # Загрузка TDMS файла
             tdms_file = TdmsFile.read(file_path)
             df = tdms_file.as_dataframe()
-            print(f"Колонки в DataFrame: {df.columns.tolist()}")
 
-            # Проверка флага отмены
-            if self._cancel:
-                print("Обработка прервана после загрузки файла")
-                return
+            # Анализируем сигналы через менеджер
+            print("\nАнализ сигналов для интерактивного графика...")
+            self.signal_manager.analyze_signals(df.columns.tolist())
 
-            # Фильтрация колонок: time или 'station' и не '_bsw'
-            columns_to_keep = [col for col in df.columns if 'time' in col.lower() or ('station' in col.lower() and not col.lower().endswith('_bsw'))]
-            if not columns_to_keep:
-                print("Нет подходящих колонок для обработки (включая время)")
-                return
+            # Получаем сигналы по категориям
+            current_signals = self.signal_manager.get_current_signals()
+            pressure_signals = self.signal_manager.get_pressure_signals()
+            voltage_signals = self.signal_manager.get_voltage_signals() if SHOW_VOLTAGES else {}
 
-            df = df[columns_to_keep]
+            print(f"Найдено токов: {len(current_signals)}, давлений: {len(pressure_signals)}")
 
             # Идентификация временной колонки
-            time_cols = [col for col in df.columns if 'time' in col.lower()]
-            time_col = time_cols[0] if time_cols else None
+            time_col = next((col for col in df.columns if 'time' in col.lower()), None)
             if not time_col:
                 print("Временная колонка не найдена!")
                 return
 
-            # Идентификация колонок токов и давления
-            motor_current_cols = [col for col in df.columns if 'motor current' in col.lower()]
-            ecu_current_cols = [col for col in df.columns if 'ecu current' in col.lower()]
-            pressure_cols = [col for col in df.columns if any(wheel in col.lower() for wheel in ['rl', 'fr', 'fl', 'rr', 'mc']) and 'current' not in col.lower()]
-
-            # Проверка наличия данных
-            if not motor_current_cols and not ecu_current_cols and not pressure_cols:
-                print("Нет данных для построения графика (Motor Current, ECU Current или Pressure)")
-                return
-
-            # Проверка данных на NaN или пустоту
-            if df[time_col].isna().all():
-                print("Временная колонка содержит только NaN")
-                return
-            for col in motor_current_cols + ecu_current_cols + pressure_cols:
-                if df[col].isna().all():
-                    print(f"Колонка {col} содержит только NaN")
-                    return
-
             # Находим активный участок
-            active_start, active_end = self.find_active_section(df, time_col, motor_current_cols + ecu_current_cols)
+            active_start, active_end = self.find_active_section(df, time_col, list(current_signals.keys()))
             print(f"Активный участок: start={active_start}, end={active_end}")
 
             if active_start is None or active_end is None:
@@ -2146,115 +2149,95 @@ class Endurance_tdms_logs_dealer:
                 return
 
             # Создаем интерактивный график с Plotly
-            # Анализируем сигналы
-            print(f"\nАнализ сигналов для интерактивного графика...")
-            signal_info = self.signal_manager.analyze_signals(df.columns.tolist())
-
-            # Создаем интерактивный график с Plotly
             fig = go.Figure()
 
-            # Добавляем токи с их цветами
-            current_signals = self.signal_manager.get_current_signals()
+            # Добавляем токи
             for signal_name, info in current_signals.items():
-                display_name = info['display_name']
-                color = info['color']
-
                 fig.add_trace(go.Scatter(
                     x=df_active[time_col],
                     y=df_active[signal_name],
                     mode='lines',
-                    name=display_name,
-                    line=dict(color=color, width=2),
-                    opacity=0.8
+                    name=info['display_name'],
+                    line=dict(color=info['color'], width=2),
+                    opacity=0.9
                 ))
 
-            # Добавляем давления с их цветами
-            pressure_signals = self.signal_manager.get_pressure_signals()
+            # Добавляем давления
             if pressure_signals:
                 for signal_name, info in pressure_signals.items():
-                    display_name = info['display_name']
-                    color = info['color']
-
                     fig.add_trace(go.Scatter(
                         x=df_active[time_col],
                         y=df_active[signal_name],
                         mode='lines',
-                        name=display_name,
+                        name=info['display_name'],
                         yaxis='y2',
-                        line=dict(color=color, width=2, dash='dash'),
+                        line=dict(color=info['color'], width=2, dash='dash'),
                         opacity=0.8
                     ))
 
-            # Добавляем токи (левая ось)
-            for col in motor_current_cols:
-                short_name = col.split('/')[-1]
-                short_name = short_name.split('Station one')[-1].strip() if 'Station one' in short_name else short_name
-                fig.add_trace(go.Scatter(
-                    x=df_active[time_col],
-                    y=df_active[col],
-                    mode='lines',
-                    name=short_name,
-                    line=dict(color='red')
-                ))
-
-            for col in ecu_current_cols:
-                short_name = col.split('/')[-1]
-                short_name = short_name.split('Station one')[-1].strip() if 'Station one' in short_name else short_name
-                fig.add_trace(go.Scatter(
-                    x=df_active[time_col],
-                    y=df_active[col],
-                    mode='lines',
-                    name=short_name,
-                    line=dict(color='blue')
-                ))
-
-            # Добавляем давления (правая ось)
-            for col in pressure_cols:
-                short_name = col.split('/')[-1]
-                short_name = short_name.split('Station one')[-1].strip() if 'Station one' in short_name else short_name
-                color = 'purple' if 'mc' in col.lower() else 'orange'
-                fig.add_trace(go.Scatter(
-                    x=df_active[time_col],
-                    y=df_active[col],
-                    mode='lines',
-                    name=short_name,
-                    yaxis='y2',
-                    line=dict(color=color, dash='dash')
-                ))
+            # Добавляем напряжения (только если включено)
+            if voltage_signals and SHOW_VOLTAGES:
+                for signal_name, info in voltage_signals.items():
+                    fig.add_trace(go.Scatter(
+                        x=df_active[time_col],
+                        y=df_active[signal_name],
+                        mode='lines',
+                        name=info['display_name'],
+                        yaxis='y3',
+                        line=dict(color=info['color'], width=1.5, dash='dot'),
+                        opacity=0.7
+                    ))
 
             # Настройка layout
-            fig.update_layout(
-                title=f"Interactive Graph for {os.path.basename(file_path)} (Active Section)",
-                xaxis_title='Time (s)',
-                yaxis_title='Current (A)',
-                yaxis2=dict(
+            layout_updates = {
+                'title': f"Interactive: {os.path.basename(file_path)} (Active Section)",
+                'xaxis_title': 'Time (s)',
+                'yaxis_title': 'Current (A)',
+                'legend': dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1),
+                'margin': dict(t=100),
+                'hovermode': 'x unified'
+            }
+
+            # Ограничения осей
+            layout_updates['yaxis'] = dict(range=[0, CURRENT_UPPER_LIMIT])
+
+            # Вторая ось для давлений
+            if pressure_signals:
+                layout_updates['yaxis2'] = dict(
                     title='Pressure (bar)',
                     overlaying='y',
                     side='right',
-                    range=[0, 250]
-                ),
-                legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1),
-                margin=dict(t=100),
-                hovermode='x unified'
-            )
+                    range=[-5, PRESSURE_UPPER_LIMIT]
+                )
 
-            # СОХРАНЯЕМ В ДОМАШНЮЮ ДИРЕКТОРИЮ ВМЕСТО /tmp
+            # Третья ось для напряжений (только если включено)
+            if voltage_signals and SHOW_VOLTAGES:
+                layout_updates['yaxis3'] = dict(
+                    title='Voltage (V)',
+                    overlaying='y',
+                    side='right',
+                    anchor='free',
+                    position=0.95,
+                    range=[0, 20]
+                )
+
+            fig.update_layout(**layout_updates)
+
+            # Сохраняем
             home_dir = os.path.expanduser("~")
-            html_filename = f"plotly_interactive_{os.path.basename(file_path).replace('.tdms', '')}_{int(time.time())}.html"
+            html_filename = f"interactive_{os.path.basename(file_path).replace('.tdms', '')}.html"
             html_path = os.path.join(home_dir, html_filename)
 
-            # Сохраняем HTML файл
             fig.write_html(html_path)
             print(f"HTML файл сохранен: {html_path}")
 
-            # Открываем в браузере - КОРРЕКТНЫЙ СПОСОБ ДЛЯ LINUX
-            self.open_html_file_in_browser(html_path)
+            # Открываем в браузере
+            self.open_html_file_with_fallback(html_path)
 
         except Exception as e:
             print(f"Ошибка при создании интерактивного графика: {e}")
             import traceback
             traceback.print_exc()
-
 
 
 
@@ -2344,7 +2327,9 @@ class SignalManager:
     }
 
     def __init__(self):
-        self.signal_info = {}
+        self.custom_names = {}
+        self.custom_colors = {}
+        self.signal_info = {}  # Информация о всех найденных сигналах
 
     def analyze_signals(self, df_columns):
         """Простой анализ сигналов"""
@@ -2367,19 +2352,19 @@ class SignalManager:
                 color = self.DEFAULT_COLORS['voltage']
             elif 'mc-(p1)' in col_lower:
                 signal_type = 'pressure_mc'
-                color = '#FF4500'  # Красно-оранжевый для MC
+                color = self.DEFAULT_COLORS['pressure_mc']
             elif 'rl-(p2)' in col_lower:
                 signal_type = 'pressure_rl'
-                color = '#32CD32'  # Лаймовый для RL
+                color = self.DEFAULT_COLORS['pressure_rl']
             elif 'fr-(p3)' in col_lower:
                 signal_type = 'pressure_fr'
-                color = '#1E90FF'  # Синий доджер для FR
+                color = self.DEFAULT_COLORS['pressure_fr']
             elif 'fl-(p4)' in col_lower:
                 signal_type = 'pressure_fl'
-                color = '#FF1493'  # Глубокий розовый для FL
+                color = self.DEFAULT_COLORS['pressure_fl']
             elif 'rr-(p5)' in col_lower:
                 signal_type = 'pressure_rr'
-                color = '#FFD700'  # Золотой для RR
+                color = self.DEFAULT_COLORS['pressure_rr']
 
             # Простое отображаемое имя
             display_name = col
@@ -2407,10 +2392,48 @@ class SignalManager:
                 'color': color,
                 'display_name': display_name,
                 'is_current': signal_type in ['motor_current', 'ecu_current'],
-                'is_pressure': 'pressure' in signal_type
+                'is_pressure': 'pressure' in signal_type,
+                'is_voltage': signal_type == 'voltage'
             }
 
         return self.signal_info
+
+    # ДОБАВЛЯЕМ НЕДОСТАЮЩИЕ МЕТОДЫ:
+    def get_current_signals(self):
+        """Возвращает все сигналы тока"""
+        return {name: info for name, info in self.signal_info.items()
+                if info['is_current']}
+
+    def get_pressure_signals(self):
+        """Возвращает все сигналы давления"""
+        return {name: info for name, info in self.signal_info.items()
+                if info['is_pressure']}
+
+    def get_voltage_signals(self):
+        """Возвращает все сигналы напряжения"""
+        return {name: info for name, info in self.signal_info.items()
+                if info['is_voltage']}
+
+    def get_signals_for_plotting(self, include_types=None, exclude_types=None):
+        """
+        Возвращает сигналы для построения графиков
+        include_types: список типов для включения (если None - все кроме статусов)
+        exclude_types: список типов для исключения
+        """
+        if include_types is None:
+            include_types = ['motor_current', 'ecu_current', 'pressure_mc',
+                            'pressure_rl', 'pressure_fr', 'pressure_fl',
+                            'pressure_rr', 'voltage']
+
+        if exclude_types is None:
+            exclude_types = ['other']
+
+        result = {}
+        for name, info in self.signal_info.items():
+            if info['detected_type'] in include_types and info['detected_type'] not in exclude_types:
+                result[name] = info
+
+        return result
 
     def print_summary(self):
         """Простая сводка"""
@@ -2418,9 +2441,24 @@ class SignalManager:
         print("ПРОСТАЯ СВОДКА СИГНАЛОВ:")
         print("="*60)
 
-        for name, info in self.signal_info.items():
-            if info['detected_type'] != 'other':  # Только интересные сигналы
-                print(f"{info['display_name']}: {info['detected_type']}, цвет: {info['color']}")
+        current_signals = self.get_current_signals()
+        pressure_signals = self.get_pressure_signals()
+        voltage_signals = self.get_voltage_signals()
+
+        if current_signals:
+            print(f"\nТОКИ ({len(current_signals)}):")
+            for name, info in current_signals.items():
+                print(f"  {info['display_name']}: {info['detected_type']}, цвет: {info['color']}")
+
+        if pressure_signals:
+            print(f"\nДАВЛЕНИЯ ({len(pressure_signals)}):")
+            for name, info in pressure_signals.items():
+                print(f"  {info['display_name']}: {info['detected_type']}, цвет: {info['color']}")
+
+        if voltage_signals:
+            print(f"\nНАПРЯЖЕНИЯ ({len(voltage_signals)}):")
+            for name, info in voltage_signals.items():
+                print(f"  {info['display_name']}: {info['detected_type']}, цвет: {info['color']}")
 
 # Запуск приложения
 if __name__ == "__main__":
