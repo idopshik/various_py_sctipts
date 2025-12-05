@@ -42,6 +42,9 @@ SHOW_PRESSURE_THRESHOLDS = False  # Показывать пороги давле
 SHOW_GRID = True              # Показывать сетку
 LEGEND_POSITION = 'upper center'  # Положение легенды
 
+# Обрезка логов
+SKIP_AT_START = 0.0           # Пропустить секунд в начале лога
+SKIP_AT_END = 0.0             # Пропустить секунд в конце лога
 
 
 
@@ -1157,6 +1160,36 @@ class Endurance_tdms_logs_dealer:
         # Открываем в браузере
         self.open_html_file_with_fallback(html_path)
 
+    def trim_dataframe(self, df, time_col, skip_start=0.0, skip_end=0.0):
+        """
+        Обрезает DataFrame, убирая начало и конец лога
+        """
+        if df.empty or time_col not in df.columns:
+            return df
+
+        # Находим минимальное и максимальное время
+        min_time = df[time_col].min()
+        max_time = df[time_col].max()
+
+        # Рассчитываем новые границы
+        new_min = min_time + skip_start
+        new_max = max_time - skip_end
+
+        # Проверяем, что границы корректны
+        if new_min >= new_max:
+            print(f"Предупреждение: обрезка слишком большая. Время: {min_time}-{max_time}, обрезка: {skip_start}+{skip_end}")
+            return df
+
+        # Фильтруем данные
+        mask = (df[time_col] >= new_min) & (df[time_col] <= new_max)
+        df_trimmed = df.loc[mask].copy()
+
+        print(f"Обрезка данных: {len(df)} -> {len(df_trimmed)} точек")
+        print(f"Время: {min_time:.2f}-{max_time:.2f} -> {new_min:.2f}-{new_max:.2f}")
+        print(f"Пропущено: {skip_start} сек в начале, {skip_end} сек в конце")
+
+        return df_trimmed
+
 
     def check_file(self, file_path, gui_instance):
         """
@@ -1176,6 +1209,13 @@ class Endurance_tdms_logs_dealer:
             if not time_col:
                 print("Временная колонка не найдена!")
                 return False
+
+            # Обрезаем данные если нужно
+            if SKIP_AT_START > 0 or SKIP_AT_END > 0:
+                df = self.trim_dataframe(df, time_col, SKIP_AT_START, SKIP_AT_END)
+                if df.empty:
+                    print("После обрезки данных не осталось!")
+                    return False
 
             # Поиск колонок с Motor Current и ECU Current
             motor_current_cols = [col for col in df.columns if 'motor current' in col.lower()]
@@ -1879,16 +1919,23 @@ class Endurance_tdms_logs_dealer:
             tdms_file = TdmsFile.read(tdms_file_path)
             df = tdms_file.as_dataframe()
 
-            # Простой анализ сигналов
-            print("\nАнализ сигналов...")
-            signal_info = self.signal_manager.analyze_signals(df.columns.tolist())
-            self.signal_manager.print_summary()
-
             # Временная колонка
             time_col = next((col for col in df.columns if 'time' in col.lower()), None)
             if not time_col:
                 print("Временная колонка не найдена!")
                 return None
+
+            # Обрезаем данные если нужно
+            if SKIP_AT_START > 0 or SKIP_AT_END > 0:
+                df = self.trim_dataframe(df, time_col, SKIP_AT_START, SKIP_AT_END)
+                if df.empty:
+                    print("После обрезки данных не осталось!")
+                    return None
+
+            # Простой анализ сигналов
+            print("\nАнализ сигналов...")
+            signal_info = self.signal_manager.analyze_signals(df.columns.tolist())
+            self.signal_manager.print_summary()
 
             # Получаем сигналы для построения
             plot_signals = []
@@ -1959,7 +2006,7 @@ class Endurance_tdms_logs_dealer:
                 ax3.set_ylim(0, 20)
                 ax3.tick_params(axis='y', labelcolor='black')
 
-            # Заголовок
+            # Заголовок с информацией об обрезке
             title = f"TDMS Analysis: {os.path.basename(tdms_file_path)}"
 
             # Добавляем информацию о настройках в заголовок
@@ -1968,6 +2015,8 @@ class Endurance_tdms_logs_dealer:
                 settings_info.append("No Energy")
             if not SHOW_VOLTAGES:
                 settings_info.append("No Voltage")
+            if SKIP_AT_START > 0 or SKIP_AT_END > 0:
+                settings_info.append(f"Trim: +{SKIP_AT_START}/-{SKIP_AT_END}s")
             if settings_info:
                 title += f" [{', '.join(settings_info)}]"
 
@@ -2116,6 +2165,19 @@ class Endurance_tdms_logs_dealer:
             tdms_file = TdmsFile.read(file_path)
             df = tdms_file.as_dataframe()
 
+            # Временная колонка
+            time_col = next((col for col in df.columns if 'time' in col.lower()), None)
+            if not time_col:
+                print("Временная колонка не найдена!")
+                return
+
+            # Обрезаем данные если нужно
+            if SKIP_AT_START > 0 or SKIP_AT_END > 0:
+                df = self.trim_dataframe(df, time_col, SKIP_AT_START, SKIP_AT_END)
+                if df.empty:
+                    print("После обрезки данных не осталось!")
+                    return
+
             # Анализируем сигналы через менеджер
             print("\nАнализ сигналов для интерактивного графика...")
             self.signal_manager.analyze_signals(df.columns.tolist())
@@ -2127,13 +2189,7 @@ class Endurance_tdms_logs_dealer:
 
             print(f"Найдено токов: {len(current_signals)}, давлений: {len(pressure_signals)}")
 
-            # Идентификация временной колонки
-            time_col = next((col for col in df.columns if 'time' in col.lower()), None)
-            if not time_col:
-                print("Временная колонка не найдена!")
-                return
-
-            # Находим активный участок
+            # Находим активный участок (на уже обрезанных данных)
             active_start, active_end = self.find_active_section(df, time_col, list(current_signals.keys()))
             print(f"Активный участок: start={active_start}, end={active_end}")
 
@@ -2189,8 +2245,12 @@ class Endurance_tdms_logs_dealer:
                     ))
 
             # Настройка layout
+            title = f"Interactive: {os.path.basename(file_path)}"
+            if SKIP_AT_START > 0 or SKIP_AT_END > 0:
+                title += f" (Trim: +{SKIP_AT_START}/-{SKIP_AT_END}s)"
+
             layout_updates = {
-                'title': f"Interactive: {os.path.basename(file_path)} (Active Section)",
+                'title': title,
                 'xaxis_title': 'Time (s)',
                 'yaxis_title': 'Current (A)',
                 'legend': dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1),
