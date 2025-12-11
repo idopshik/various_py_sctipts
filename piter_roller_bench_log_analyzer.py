@@ -48,11 +48,11 @@ python can_analyzer.py -t xlsx_custom --only-requests --no-graph
 
 ЦИФРОВЫЕ ИДЕНТИФИКАТОРЫ КЛАПАНОВ:
 -------------------------------
-pu   - Насос
-sh1  - FL/RR Электрический шаттл-клапан
-sh2  - FR/RL Электрический шаттл-клапан
-is1  - FL/RR Изолирующий клапан
-is2  - FR/RL Изолирующий клапан
+pump - Насос
+sha1 - FL/RR Электрический шаттл-клапан
+sha2 - FR/RL Электрический шаттл-клапан
+iso1 - FL/RR Изолирующий клапан
+iso2 - FR/RL Изолирующий клапан
 iFL  - Впускной клапан передний левый
 iFR  - Впускной клапан передний правый
 iRL  - Впускной клапан задний левый
@@ -75,10 +75,59 @@ Time        ID    Data
 BLF/CSV/ASCII:
 timestamp, arbitration_id, data_bytes...
 
-АВТОР: phoeby
-ВЕРСИЯ: 2.0 (поддержка двух типов XLSX)
-ОБНОВЛЕНО: 2025.11.20
+=============================================================================
+КРИТИЧЕСКИ ВАЖНАЯ ИНФОРМАЦИЯ О РАБОТЕ INLET КЛАПАНОВ
+=============================================================================
 
+INLET КЛАПАНЫ (iFL, iFR, iRL, iRR) - НОРМАЛЬНО ОТКРЫТЫЕ!
+
+Это означает:
+- Клапан НЕ АКТИВИРОВАН в команде (not in valves) → клапан ОТКРЫТ → давление ИДЕТ
+- Клапан АКТИВИРОВАН в команде (in valves) → клапан ЗАКРЫТ → давление НЕ ИДЕТ
+
+ЛОГИКА НАКАЧКИ ДАВЛЕНИЯ ДЛЯ КОЛЕСА:
+====================================
+
+Для накачки RL (диагональ FR/RL) давление идет когда:
+✓ pump активирован (in valves)
+✓ sha2 активирован (shuttle для диагонали FR/RL)
+✓ iso2 активирован (isolating для диагонали FR/RL)
+✓ iFR АКТИВИРОВАН (in valves) ← другой клапан диагонали ЗАКРЫТ
+✓ iRL НЕ АКТИВИРОВАН (not in valves) ← наш клапан ОТКРЫТ - давление идет!
+✓ oRL НЕ активирован (outlet закрыт)
+
+ПРИМЕР ПО ЛОГУ:
+===============
+
+Line 70: `51 45` = pump sha2 iso2 iFL iRL iRR
+         ↑ НЕТ iFR в списке = iFR ОТКРЫТ
+         ↑ ЕСТЬ iRL в списке = iRL ЗАКРЫТ
+         → Давление НЕ идет в RL (наш клапан закрыт)
+
+Line 106: `45 45` = pump sha2 iso2 iFL iFR iRR
+          ↑ ЕСТЬ iFR = iFR ЗАКРЫТ (другой закрыт)
+          ↑ НЕТ iRL = iRL ОТКРЫТ (наш открыт)
+          → Давление ИДЕТ в RL! ✓✓✓
+
+ФОРМУЛА В КОДЕ:
+===============
+
+if (isolating_name in valves and           # Isolating закрыт
+    shuttle_name in valves and             # Shuttle закрыт
+    inlet_name not in valves and           # НАШ inlet ОТКРЫТ ← !!! НЕ ИНВЕРТИРОВАТЬ !!!
+    outlet_name not in valves and          # Outlet закрыт
+    other_inlet_name in valves and         # ДРУГОЙ inlet ЗАКРЫТ ← !!! НЕ ИНВЕРТИРОВАТЬ !!!
+    other_outlet_name not in valves):
+    results['build'][wheel] += interval_sec
+
+НЕ ПУТАТЬ С ОБЫЧНЫМИ КЛАПАНАМИ!
+Pump, shuttles, isolating - нормально закрытые (работают стандартно)
+Inlet - НОРМАЛЬНО ОТКРЫТЫЕ (логика инвертирована)
+
+
+АВТОР: phoeby
+ВЕРСИЯ: 3.1 (ИСПРАВЛЕН баг в расчете времени создания давления)
+ОБНОВЛЕНО: 2025.12.11
 """
 
 
@@ -115,13 +164,13 @@ GRAPH_FOR_MOTOR_ONLY = True
 
 IGNORE_RESPONSES_IN_GRAPH = True
 
-# Valve names mapping table
+# Valve names mapping table - ОБНОВЛЕНО
 VALVE_NAMES = {
-    "pump": "pu",
-    "FL RR Electric shuttle EV": "sh1",
-    "FR RL Electric shuttle EV": "sh2",
-    "FL RR Isolating EV": "is1",
-    "FR RL Isolating EV": "is2",
+    "pump": "pump",  # Изменено с "pu"
+    "FL RR Electric shuttle EV": "sha1",  # Изменено с "sh1"
+    "FR RL Electric shuttle EV": "sha2",  # Изменено с "sh2"
+    "FL RR Isolating EV": "iso1",  # Изменено с "is1"
+    "FR RL Isolating EV": "iso2",  # Изменено с "is2"
     "inlet EV FL": "iFL",
     "inlet EV FR": "iFR",
     "inlet EV RL": "iRL",
@@ -132,15 +181,17 @@ VALVE_NAMES = {
     "outlet EV RR": "oRR"
 }
 
+# ОБНОВЛЕНО
 VALVE_ORDER = [
-    "pu", "sh1", "sh2", "is1", "is2",
+    "pump", "sha1", "sha2", "iso1", "iso2",
     "iFL", "iFR", "iRL", "iRR",
     "oFL", "oFR", "oRL", "oRR"
 ]
 
+# ОБНОВЛЕНО
 VALVE_COLORS = {
-    "pu": "#FF0000", "sh1": "#FF8800", "sh2": "#FFBB00", "is1": "#00AA00",
-    "is2": "#00DDDD", "iFL": "#0088FF", "iFR": "#0044FF", "iRL": "#8800FF",
+    "pump": "#FF0000", "sha1": "#FF8800", "sha2": "#FFBB00", "iso1": "#00AA00",
+    "iso2": "#00DDDD", "iFL": "#0088FF", "iFR": "#0044FF", "iRL": "#8800FF",
     "iRR": "#FF00FF", "oFL": "#FF0088", "oFR": "#AA0044", "oRL": "#888800",
     "oRR": "#444444"
 }
@@ -157,10 +208,6 @@ def find_valve_activity_period(processed_data):
     active_times = []
     for entry in processed_data:
         line_num, sequence, bytes_val, timediff, valves, req_type, full_line, timestamp_ms = entry
-
-        if 'iRR' in valves:  # или 'iRR' в активных клапанах
-            print(f"[DEBUG] iRR found - Line: {line_num}, Time: {timestamp_ms}, Type: {req_type}, Valves: {valves}")
-
         if valves and timestamp_ms is not None:  # Если есть активные клапаны и валидное время
             active_times.append(timestamp_ms)
 
@@ -394,22 +441,32 @@ def parse_ascii_log(file_path):
         traceback.print_exc()
         return []
 
-
 def parse_blf_file(file_path):
-    """Parses BLF file - возвращаем старый формат с 3 элементами"""
+    """Parses BLF file with fallback for invalid timestamps"""
     messages = []
 
     try:
         with BLFReader(file_path) as log:
+            msg_index = 0
             for msg in log:
                 if msg.arbitration_id not in target_ids:
                     continue
 
-                timestamp_ms = int(msg.timestamp * 1000)
+                # Check if timestamp is valid (not 0 or very small)
+                if msg.timestamp < 0.001:  # Less than 1ms - likely invalid
+                    # Use message index as fallback (10ms intervals)
+                    timestamp_ms = msg_index * 10
+                    if msg_index < 5:  # Show first 5 for debugging
+                        print(f"Warning: Invalid timestamp {msg.timestamp:.6f} for message {msg_index}, "
+                              f"using index-based time: {timestamp_ms} ms")
+                else:
+                    timestamp_ms = int(msg.timestamp * 1000)
+
                 hex_data = ' '.join(f'{b:02X}' for b in msg.data)
                 original_line = f"{msg.timestamp:.6f};ID={msg.arbitration_id:03X};{hex_data}"
 
                 messages.append((timestamp_ms, hex_data, original_line))
+                msg_index += 1
 
         print(f"Parsed BLF file: {len(messages)} relevant CAN messages found")
         return messages
@@ -419,6 +476,7 @@ def parse_blf_file(file_path):
         import traceback
         traceback.print_exc()
         return []
+
 
 def parse_csv_file(file_path):
     """Parses CSV file - возвращаем старый формат с 3 элементами"""
@@ -1216,8 +1274,41 @@ def analyze_commands(messages, file_format='blf'):
 
     return stats
 
+def analyze_response_times(command_stats):
+    """
+    НОВАЯ ФУНКЦИЯ: Анализирует время ответа блока на команды
+    Возвращает словарь со статистикой по времени ответа
+    """
+    response_times = []
+
+    # Собираем все времена ответа из command_pairs
+    for pair in command_stats['command_pairs']:
+        response_time = pair['response_time']
+        if response_time is not None and response_time >= 0:
+            response_times.append(response_time)
+
+    if not response_times:
+        return None
+
+    # Вычисляем статистику
+    stats = {
+        'count': len(response_times),
+        'average': sum(response_times) / len(response_times),
+        'min': min(response_times),
+        'max': max(response_times),
+        'all_times': response_times
+    }
+
+    print(f"[Response Time Analysis]")
+    print(f"  Total responses: {stats['count']}")
+    print(f"  Average time: {stats['average']:.2f} ms")
+    print(f"  Fastest: {stats['min']} ms")
+    print(f"  Slowest: {stats['max']} ms")
+
+    return stats
+
 def format_command_analysis_report(command_stats, file_format):
-    """Formats command analysis for the report with улучшенной информацией"""
+    """Formats command analysis for the report - ОБНОВЛЕНО с анализом времени ответа"""
     report = []
 
     report.append("COMMAND ANALYSIS REPORT")
@@ -1245,6 +1336,71 @@ def format_command_analysis_report(command_stats, file_format):
         error_rate = (total_7f / total_2f) * 100
         report.append(f"Success rate: {success_rate:.1f}%")
         report.append(f"Error rate: {error_rate:.1f}%")
+        report.append("")
+
+    # НОВЫЙ РАЗДЕЛ: Анализ времени ответа блока
+    response_time_stats = analyze_response_times(command_stats)
+    if response_time_stats:
+        report.append("=" * 80)
+        report.append("ECU RESPONSE TIME ANALYSIS")
+        report.append("=" * 80)
+        report.append("")
+        report.append("This section analyzes ECU response times to identify")
+        report.append("whether the ECU is responding promptly to commands.")
+        report.append("")
+        report.append("-" * 50)
+        report.append(f"Total successful responses analyzed: {response_time_stats['count']}")
+        report.append(f"Average response time: {response_time_stats['average']:.2f} ms")
+        report.append(f"Fastest response: {response_time_stats['min']} ms")
+        report.append(f"Slowest response: {response_time_stats['max']} ms")
+        report.append("")
+
+        # Оценка производительности
+        avg_time = response_time_stats['average']
+        max_time = response_time_stats['max']
+
+        report.append("PERFORMANCE ASSESSMENT:")
+        report.append("-" * 50)
+
+        if avg_time < 20:
+            report.append("✓ EXCELLENT: Average response time is excellent (< 20ms)")
+            report.append("  The ECU is responding very quickly to commands.")
+        elif avg_time < 50:
+            report.append("✓ GOOD: Average response time is good (< 50ms)")
+            report.append("  The ECU is responding appropriately to commands.")
+        else:
+            report.append("⚠ WARNING: Average response time exceeds 50ms")
+            report.append("  The ECU may be experiencing delays.")
+
+        report.append("")
+
+        if max_time < 50:
+            report.append("✓ GOOD: Maximum response time is acceptable (< 50ms)")
+            report.append("  No significant delays detected in ECU responses.")
+        elif max_time < 100:
+            report.append("⚠ CAUTION: Maximum response time is elevated (< 100ms)")
+            report.append("  Occasional delays may occur.")
+        else:
+            report.append("⚠ WARNING: Maximum response time exceeds 100ms")
+            report.append(f"  Slowest response was {max_time} ms - investigate delays.")
+
+        report.append("")
+        report.append("CONCLUSION:")
+        report.append("-" * 50)
+
+        if avg_time < 50 and max_time < 100:
+            report.append("✓ The ECU is responding within acceptable limits.")
+            report.append("✓ Performance delays are likely NOT caused by the ECU.")
+            report.append("  → Investigation should focus on:")
+            report.append("     - Test bench equipment")
+            report.append("     - CAN bus communication")
+            report.append("     - External control systems")
+        else:
+            report.append("⚠ The ECU shows some response delays.")
+            report.append("  Further investigation recommended.")
+
+        report.append("")
+        report.append("=" * 80)
         report.append("")
 
     # Show detailed command pairs
@@ -1493,42 +1649,16 @@ def format_timediff(diff_ms):
     else:
         return " --- "
 
-
-def parse_timestamp(timestamp_str):
-    """
-    Parse timestamp from field (format HH:MM:SS.mmm or other Excel formats)
-    Returns time in milliseconds
-    """
-    try:
-        # Remove any arrows or special characters
-        cleaned_str = re.sub(r'[⇨⇦]', '', timestamp_str).strip()
-
-        # Handle format HH:MM:SS.mmm
-        time_parts = cleaned_str.split(':')
-        if len(time_parts) == 3:
-            hours = int(time_parts[0])
-            minutes = int(time_parts[1])
-
-            # Split seconds and milliseconds
-            seconds_parts = time_parts[2].split('.')
-            seconds = int(seconds_parts[0])
-            milliseconds = int(seconds_parts[1]) if len(seconds_parts) > 1 else 0
-
-            total_ms = (hours * 3600 + minutes * 60 + seconds) * 1000 + milliseconds
-            return total_ms
-
-        # Handle other time formats if needed
-        print(f"Warning: Unknown time format: {timestamp_str}")
-        return None
-    except Exception as e:
-        print(f"Error parsing timestamp '{timestamp_str}': {e}")
-        return None
 def analyze_pressure_modes(processed_data):
     """
     Analyzes pressure build and release times for each wheel.
     Returns dict with times in seconds.
+
+    ВАЖНО: Inlet клапаны - НОРМАЛЬНО ОТКРЫТЫЕ!
+    - Клапан НЕ активирован (not in valves) → ОТКРЫТ → давление идет
+    - Клапан активирован (in valves) → ЗАКРЫТ → давление НЕ идет
     """
-    print(f"[TimestampDebug] analyze_pressure_modes called with {len(processed_data)} entries")
+    print(f"[PressureAnalysis] analyze_pressure_modes called with {len(processed_data)} entries")
 
     # Wheel diagonal mapping
     wheel_diagonals = {
@@ -1544,29 +1674,32 @@ def analyze_pressure_modes(processed_data):
     }
 
     if not processed_data:
-        print("[TimestampDebug] No processed_data, returning empty results")
+        print("[PressureAnalysis] No processed_data, returning empty results")
         return results
 
+    # ✅ КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Фильтруем ТОЛЬКО команды управления клапанами!
+    # Исключаем responses (6F), TesterPresent (3E/7E), ExtendedSession (10/50)
+    valve_commands_only = [e for e in processed_data if e[1] == "2F 4B 12 03"]
 
-    data_to_analyze = [e for e in processed_data if e[5] != "Response"] if IGNORE_RESPONSES_IN_GRAPH else processed_data
+    print(f"[PressureAnalysis] Filtered to {len(valve_commands_only)} valve commands (from {len(processed_data)} total)")
 
     # Process consecutive pairs to calculate time intervals
-    for i in range(len(data_to_analyze) - 1):
-        line_num, sequence, bytes_val, timediff, valves, req_type, full_line, timestamp_ms = data_to_analyze[i]
-        next_line = data_to_analyze[i + 1]
-        next_timediff = next_line[3]
+    for i in range(len(valve_commands_only) - 1):
+        line_num, sequence, bytes_val, timediff, valves, req_type, full_line, timestamp_ms = valve_commands_only[i]
+        next_line = valve_commands_only[i + 1]
+        next_timestamp_ms = next_line[7]
 
         if i == 0:
-            print(f"[TimestampDebug] First entry unpacked: line_num={line_num}, timestamp_ms={timestamp_ms}, timediff={timediff}")
+            print(f"[PressureAnalysis] First entry: line_num={line_num}, timestamp_ms={timestamp_ms}")
 
         # Calculate time interval to next measurement (in seconds)
-        if next_timediff is not None:
-            interval_sec = next_timediff / 1000.0
+        if timestamp_ms is not None and next_timestamp_ms is not None:
+            interval_sec = (next_timestamp_ms - timestamp_ms) / 1000.0
         else:
             continue
 
         # Check pump active
-        pump_active = 'pu' in valves
+        pump_active = 'pump' in valves
 
         if not pump_active:
             continue
@@ -1596,20 +1729,21 @@ def analyze_pressure_modes(processed_data):
             other_inlet_name = VALVE_NAMES[f"inlet EV {other_wheel}"]
             other_outlet_name = VALVE_NAMES[f"outlet EV {other_wheel}"]
 
-            # Check PRESSURE BUILD condition
+            # PRESSURE BUILD condition
             if (isolating_name in valves and
                 shuttle_name in valves and
-                inlet_name in valves and
+                inlet_name not in valves and          # НАШ клапан НЕ активирован = ОТКРЫТ
                 outlet_name not in valves and
-                other_inlet_name not in valves and
+                other_inlet_name in valves and        # ДРУГОЙ клапан активирован = ЗАКРЫТ
                 other_outlet_name not in valves):
+
                 results['build'][wheel] += interval_sec
 
-            # Check PRESSURE RELEASE condition
+            # Check PRESSURE RELEASE condition (outlet активирован)
             if outlet_name in valves:
                 results['release'][wheel] += interval_sec
 
-    print(f"[TimestampDebug] analyze_pressure_modes results: {results}")
+    print(f"[PressureAnalysis] Final Results: {results}")
     return results
 
 def show_message(title, message, is_error=False):
@@ -1630,44 +1764,115 @@ def show_message(title, message, is_error=False):
 def create_valve_timeline_graph(directory, filename, processed_data, pressure_stats):
     """
     Creates timeline graph showing valve states over time.
-    Упрощенная версия с фокусом на сравнении iRR с другими клапанами.
+    ОБНОВЛЕНО: Убрана легенда, улучшен заголовок и информационная табличка
     """
-    if not WITHGRAPH or not processed_data:
+    if not WITHGRAPH:
+        print("[TimestampDebug] WITHGRAPH is False, skipping graph creation")
         return None
 
-    # Фильтруем данные для графика
+    if not processed_data:
+        print("[TimestampDebug] No data to plot")
+        return None
+
+    print(f"[TimestampDebug] create_valve_timeline_graph called with {len(processed_data)} entries")
+
+    # Для графика используем все записи с командами управления клапанами
+    # включая 00 00 (всё выключено), чтобы показать переходы в выключенное состояние
     graph_data = [entry for entry in processed_data
                   if entry[1] in ["2F 4B 12 03", "6F 4B 12 03", "62 4B 12"]]
 
     if IGNORE_RESPONSES_IN_GRAPH:
        graph_data = [e for e in graph_data if e[5] != "Response"]
 
+    print(f"[GraphDebug] Filtered graph data: {len(graph_data)} valve command entries (from {len(processed_data)} total)")
+
     if not graph_data:
+        print("[GraphDebug] No valve command data to plot")
         return None
 
-    # Определяем период активности
+    # Определяем период активности клапанов
     activity_period = None
     if GRAPH_FOR_MOTOR_ONLY:
         activity_period = find_valve_activity_period(graph_data)
         if activity_period:
             graph_data = filter_data_for_motor_period(graph_data, activity_period)
+            print(f"[MotorActivity] Building graph for motor activity period only: {activity_period}")
+        else:
+            print(f"[MotorActivity] No valve activity found, building full graph")
+
+    # Собираем маркеры Extended Session и Tester Present
+    ext_session_markers = []
+    tester_present_markers = []
+
+    if ADD_EXS_AND_TP:
+        # Сначала посмотрим, что вообще есть в processed_data
+        all_sequences = {}
+        for entry in processed_data:
+            seq = entry[1]
+            all_sequences[seq] = all_sequences.get(seq, 0) + 1
+
+        print(f"[Markers DEBUG] All sequences in processed_data: {all_sequences}")
+
+        # Теперь собираем маркеры
+        for entry in processed_data:
+            line_num, sequence, bytes_val, timediff, valves, req_type, full_line, timestamp_ms = entry
+
+            # Детальная диагностика для первых нескольких 3E/7E
+            if sequence in ["3E", "7E"] and len(tester_present_markers) < 3:
+                print(f"[Markers DEBUG] Found {sequence}: timestamp={timestamp_ms}, req_type={req_type}")
+                if GRAPH_FOR_MOTOR_ONLY and activity_period:
+                    start_time, end_time = activity_period
+                    print(f"[Markers DEBUG]   activity_period: {start_time} - {end_time}")
+                    print(f"[Markers DEBUG]   in range: {start_time <= timestamp_ms <= end_time}")
+
+            if timestamp_ms is None:
+                continue
+
+            # Если GRAPH_FOR_MOTOR_ONLY, фильтруем по периоду активности
+            if GRAPH_FOR_MOTOR_ONLY and activity_period:
+                start_time, end_time = activity_period
+                if timestamp_ms < start_time or timestamp_ms > end_time:
+                    continue
+
+            if sequence in ["10 03", "50 03"]:
+                ext_session_markers.append((timestamp_ms, sequence, req_type))
+            elif sequence in ["3E", "7E"]:
+                tester_present_markers.append((timestamp_ms, sequence, req_type))
+
+        print(f"[Markers] Extended Session markers: {len(ext_session_markers)}")
+        print(f"[Markers] Tester Present markers: {len(tester_present_markers)}")
 
     try:
-        # Создаем timeline для клапанов
+        # Extract time series data for each valve
         valve_timelines = {valve: [] for valve in VALVE_ORDER}
 
-        # Находим первый timestamp
+        # Get first timestamp to normalize - используем минимальный из ВСЕХ данных
         first_timestamp = None
-        for entry in graph_data:
-            if entry[7] is not None:
-                if first_timestamp is None or entry[7] < first_timestamp:
-                    first_timestamp = entry[7]
 
-        if first_timestamp is None:
+        # Сначала находим минимальный timestamp из всех источников
+        all_timestamps = []
+
+        # Из graph_data
+        for entry in graph_data:
+            if entry[7] is not None:  # timestamp_ms
+                all_timestamps.append(entry[7])
+
+        # Из маркеров (если ADD_EXS_AND_TP)
+        if ADD_EXS_AND_TP:
+            for ts, _, _ in ext_session_markers:
+                all_timestamps.append(ts)
+            for ts, _, _ in tester_present_markers:
+                all_timestamps.append(ts)
+
+        if all_timestamps:
+            first_timestamp = min(all_timestamps)
+            print(f"[GraphDebug] First timestamp set to: {first_timestamp} (from all data)")
+        else:
+            print("[GraphDebug] Could not find any timestamps")
             return None
 
-        # Заполняем timeline (убираем дубликаты)
-        for entry in graph_data:
+        # Теперь строим timeline для клапанов
+        for idx, entry in enumerate(graph_data):
             line_num, sequence, bytes_val, timediff, valves, req_type, full_line, timestamp_ms = entry
 
             if timestamp_ms is not None:
@@ -1675,66 +1880,133 @@ def create_valve_timeline_graph(directory, filename, processed_data, pressure_st
 
                 for valve in VALVE_ORDER:
                     is_active = valve in valves
-                    # Добавляем только если время изменилось или состояние изменилось
-                    if not valve_timelines[valve] or valve_timelines[valve][-1] != (time_sec, is_active):
-                        valve_timelines[valve].append((time_sec, is_active))
+                    valve_timelines[valve].append((time_sec, is_active))
 
-        # ОСНОВНОЙ ГРАФИК
+        if first_timestamp is None:
+            print("[GraphDebug] Could not parse timestamps - first_timestamp is None")
+            return None
+
+        # Create figure
         fig, ax = plt.subplots(figsize=(16, 10), dpi=150)
 
-        # Простой алгоритм построения - steps-post для четких переходов
+        # Plot each valve
         for idx, valve in enumerate(VALVE_ORDER):
             timeline = valve_timelines[valve]
             if not timeline:
                 continue
 
-            times = [t for t, active in timeline]
-            states = [len(VALVE_ORDER) - idx if active else 0 for t, active in timeline]
+            times = []
+            values = []
 
-            ax.plot(times, states,
+            for time_sec, is_active in timeline:
+                times.append(time_sec)
+                values.append(len(VALVE_ORDER) - idx if is_active else 0)
+
+            ax.plot(times, values,
                    drawstyle='steps-post',
                    color=VALVE_COLORS[valve],
                    linewidth=3,
                    label=valve,
                    alpha=0.8)
 
-        # Настройки графика
+        # Set Y limits
         ax.set_ylim(-0.5, len(VALVE_ORDER) + 0.5)
+        y_min, y_max = ax.get_ylim()
 
+        # Draw Extended Session markers
+        if ADD_EXS_AND_TP and ext_session_markers:
+            for timestamp_ms, sequence, req_type in ext_session_markers:
+                time_sec = (timestamp_ms - first_timestamp) / 1000.0
+
+                if "10" in sequence:  # Request
+                    color = 'green'
+                    linestyle = '--'
+                else:  # Response (50)
+                    color = 'darkgreen'
+                    linestyle = ':'
+
+                ax.axvline(x=time_sec, color=color, linestyle=linestyle,
+                          alpha=0.6, linewidth=1.5)
+
+        # Draw Tester Present markers
+        if ADD_EXS_AND_TP and tester_present_markers:
+            print(f"[TP Draw] Drawing {len(tester_present_markers)} Tester Present markers")
+            print(f"[TP Draw] first_timestamp = {first_timestamp}")
+
+            for i, (timestamp_ms, sequence, req_type) in enumerate(tester_present_markers):
+                time_sec = (timestamp_ms - first_timestamp) / 1000.0
+
+                if i < 5:  # Показываем первые 5
+                    print(f"[TP Draw] Marker {i}: timestamp={timestamp_ms}, time_sec={time_sec:.3f}")
+
+                ax.axvline(x=time_sec, color='gray', linestyle=':', alpha=0.7, linewidth=1)
+
+            # Проверяем границы графика
+            x_min, x_max = ax.get_xlim()
+            print(f"[TP Draw] Graph X limits: {x_min:.3f} to {x_max:.3f}")
+
+        # Set Y-axis ticks and labels
         y_ticks = [len(VALVE_ORDER) - idx for idx in range(len(VALVE_ORDER))]
-        y_labels = ["pump" if valve == "pu" else valve for valve in VALVE_ORDER]
-
         ax.set_yticks(y_ticks)
-        ax.set_yticklabels(y_labels, fontsize=12, fontweight='bold')
+        ax.set_yticklabels(VALVE_ORDER, fontsize=12, fontweight='bold')
+
+        # Labels and title - ОБНОВЛЕНО (убрали "Motor Activity Period Only")
         ax.set_xlabel('Time (seconds)', fontsize=14, fontweight='bold')
         ax.set_ylabel('Valves', fontsize=14, fontweight='bold')
 
-        title = f'Valve Activity Timeline - {filename}'
-        if GRAPH_FOR_MOTOR_ONLY and activity_period:
-            duration_sec = (activity_period[1] - activity_period[0]) / 1000
-            title += f' (Motor Activity Period Only)\nDuration: {duration_sec:.1f}s'
-        ax.set_title(title, fontsize=16, fontweight='bold')
+        # Простой заголовок без упоминания периода активности
+        ax.set_title(f'Valve Activity Timeline - {filename}', fontsize=16, fontweight='bold')
 
         ax.grid(True, alpha=0.3, linestyle='--')
 
-        # Легенда
-        legend_handles = [plt.Line2D([0], [0], color=VALVE_COLORS[valve], linewidth=3)
-                         for valve in VALVE_ORDER]
-        legend_labels = ["pump" if valve == "pu" else valve for valve in VALVE_ORDER]
-        ax.legend(legend_handles, legend_labels, loc='center left', bbox_to_anchor=(1, 0.5), fontsize=10)
+        # УБРАНА ЛЕГЕНДА - закомментирован весь блок
+        # legend_handles = []
+        # legend_labels = []
+        #
+        # for valve in VALVE_ORDER:
+        #     legend_handles.append(plt.Line2D([0], [0], color=VALVE_COLORS[valve], linewidth=3))
+        #     legend_labels.append(valve)
+        #
+        # # Add Extended Session to legend if present
+        # if ADD_EXS_AND_TP and ext_session_markers:
+        #     legend_handles.append(plt.Line2D([0], [0], color='green', linestyle='--', linewidth=1.5))
+        #     legend_labels.append('Extended Session')
+        #
+        # if legend_handles:
+        #     ax.legend(legend_handles, legend_labels, loc='center left', bbox_to_anchor=(1, 0.5), fontsize=10)
 
-        # Сохраняем основной график
-        timestamp_str = datetime.now().strftime("%Y%m%d_%H%M%S")
-        graph_filename = f"valve_timeline_{filename}_{timestamp_str}.png"
+        # Pressure build time table - ОБНОВЛЕНО (убрана информация о Ext Session и Tester Present)
+        if pressure_stats and pressure_stats['build']:
+            table_text = "Pressure Build Time:\n"
+            for wheel in ['FL', 'FR', 'RL', 'RR']:
+                time_val = pressure_stats['build'][wheel]
+                table_text += f"{wheel}: {time_val:.3f}s\n"
+
+            # УБРАНО - не добавляем информацию о Extended Session и Tester Present
+            # if ADD_EXS_AND_TP:
+            #     table_text += f"\nExt Session: {len(ext_session_markers)}"
+            #     table_text += f"\nTester Present: {len(tester_present_markers)}"
+
+            ax.text(0.98, 0.02, table_text,
+                   transform=ax.transAxes,
+                   fontsize=11,
+                   verticalalignment='bottom',
+                   horizontalalignment='right',
+                   bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.8, pad=0.5),
+                   family='monospace',
+                   fontweight='bold')
+
+        plt.tight_layout()
+
+        # Save figure
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        graph_filename = f"valve_timeline_{filename}_{timestamp}.png"
         graph_path = os.path.join(directory, graph_filename)
+
         plt.savefig(graph_path, dpi=150, bbox_inches='tight')
         plt.close()
 
-        print(f"[GraphDebug] Created main timeline graph: {graph_path}")
-
-        # ДОПОЛНИТЕЛЬНО: ГРАФИК СРАВНЕНИЯ i-КЛАПАНОВ
-        create_inlet_valves_comparison(directory, filename, valve_timelines, timestamp_str)
-
+        print(f"[GraphDebug] Created timeline graph: {graph_path}")
         return graph_path
 
     except Exception as e:
@@ -1742,191 +2014,6 @@ def create_valve_timeline_graph(directory, filename, processed_data, pressure_st
         import traceback
         traceback.print_exc()
         return None
-
-
-def create_inlet_valves_comparison(directory, filename, valve_timelines, timestamp_str):
-    """Создает график сравнения впускных клапанов (iFL, iFR, iRL, iRR)"""
-    try:
-        print(f"\n[INLET COMPARISON] Creating inlet valves comparison graph")
-
-        fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(14, 10), dpi=150)
-
-        inlet_valves = ['iFL', 'iFR', 'iRL', 'iRR']
-        inlet_colors = ['#0088FF', '#0044FF', '#8800FF', '#FF00FF']  # Синие/фиолетовые для впускных
-
-        # ОСНОВНОЙ ВИД - все 4 впускных клапана
-        for idx, valve in enumerate(inlet_valves):
-            timeline = valve_timelines[valve]
-            if not timeline:
-                continue
-
-            times = [t for t, active in timeline]
-            states = [idx + 1 if active else 0 for t, active in timeline]  # Разные уровни для каждого
-
-            ax1.plot(times, states,
-                    drawstyle='steps-post',
-                    color=inlet_colors[idx],
-                    linewidth=4,
-                    label=valve,
-                    alpha=0.9)
-
-        ax1.set_ylim(0, len(inlet_valves) + 0.5)
-        ax1.set_yticks(range(1, len(inlet_valves) + 1))
-        ax1.set_yticklabels(inlet_valves, fontsize=12, fontweight='bold')
-        ax1.set_ylabel('Inlet Valves', fontsize=14, fontweight='bold')
-        ax1.set_title(f'Inlet Valves Comparison - {filename}', fontsize=16, fontweight='bold')
-        ax1.grid(True, alpha=0.3, linestyle='--')
-        ax1.legend(loc='upper right')
-
-        # ZOOM НА ОБЛАСТЬ ПЕРВЫХ ВЫКЛЮЧЕНИЙ (7-8 секунд)
-        for idx, valve in enumerate(inlet_valves):
-            timeline = valve_timelines[valve]
-            if not timeline:
-                continue
-
-            times = [t for t, active in timeline]
-            states = [idx + 1 if active else 0 for t, active in timeline]
-
-            ax2.plot(times, states,
-                    drawstyle='steps-post',
-                    color=inlet_colors[idx],
-                    linewidth=4,
-                    label=valve,
-                    alpha=0.9)
-
-        # ZOOM на область 7-8 секунд (где первые выключения)
-        ax2.set_xlim(7.0, 8.0)
-        ax2.set_ylim(0, len(inlet_valves) + 0.5)
-        ax2.set_yticks(range(1, len(inlet_valves) + 1))
-        ax2.set_yticklabels(inlet_valves, fontsize=12, fontweight='bold')
-        ax2.set_xlabel('Time (seconds)', fontsize=14, fontweight='bold')
-        ax2.set_ylabel('Inlet Valves', fontsize=14, fontweight='bold')
-        ax2.set_title('Zoom: First Shutdowns (7.0-8.0 seconds)', fontsize=14, fontweight='bold')
-        ax2.grid(True, alpha=0.3, linestyle='--')
-
-        # Анализ и аннотация выключений в zoom области
-        print(f"\n[SHUTDOWN ANALYSIS in 7-8s range]:")
-        for valve in inlet_valves:
-            timeline = valve_timelines[valve]
-            if timeline:
-                shutdowns = []
-                for i in range(1, len(timeline)):
-                    prev_time, prev_active = timeline[i-1]
-                    curr_time, curr_active = timeline[i]
-
-                    # Выключение в диапазоне 7-8 секунд
-                    if prev_active and not curr_active and 7.0 <= curr_time <= 8.0:
-                        duration = curr_time - prev_time
-                        shutdowns.append((prev_time, curr_time, duration))
-
-                        # Аннотация на графике
-                        valve_idx = inlet_valves.index(valve) + 1
-                        ax2.axvline(x=curr_time, color='red', linestyle='--', alpha=0.6, linewidth=1)
-                        ax2.text(curr_time, valve_idx - 0.2, f'{duration*1000:.0f}ms',
-                                fontsize=8, color='red', ha='center')
-
-                        print(f"  {valve}: shutdown at {curr_time:.3f}s, duration: {duration:.3f}s ({duration*1000:.0f}ms)")
-
-        plt.tight_layout()
-
-        # Сохраняем график сравнения
-        comparison_path = os.path.join(directory, f"inlet_valves_comparison_{filename}_{timestamp_str}.png")
-        plt.savefig(comparison_path, dpi=150, bbox_inches='tight')
-        plt.close()
-
-        print(f"[ComparisonDebug] Created inlet valves comparison: {comparison_path}")
-
-    except Exception as e:
-        print(f"[ComparisonDebug] Error creating comparison graph: {e}")
-
-
-def create_zoom_graph(directory, filename, valve_timelines, first_timestamp, timestamp):
-    """Создает увеличенный график для анализа выключений клапанов"""
-    try:
-        print(f"\n[ZOOM DEBUG] Creating zoomed graph for shutdown analysis")
-
-        fig_zoom, ax_zoom = plt.subplots(figsize=(12, 8), dpi=150)
-
-        # Тот же алгоритм построения, но для zoom области
-        for idx, valve in enumerate(VALVE_ORDER):
-            timeline = valve_timelines[valve]
-            if not timeline:
-                continue
-
-            times = []
-            states = []
-
-            for i, (time_sec, is_active) in enumerate(timeline):
-                current_state = len(VALVE_ORDER) - idx if is_active else 0
-
-                if i == 0:
-                    times.append(time_sec)
-                    states.append(current_state)
-                else:
-                    prev_time, prev_active = timeline[i-1]
-                    prev_state = len(VALVE_ORDER) - idx if prev_active else 0
-
-                    if prev_active != is_active:
-                        times.append(time_sec)
-                        states.append(prev_state)
-                        times.append(time_sec)
-                        states.append(current_state)
-                    else:
-                        times.append(time_sec)
-                        states.append(current_state)
-
-            if times:
-                ax_zoom.plot(times, states,
-                           drawstyle='steps-pre',
-                           color=VALVE_COLORS[valve],
-                           linewidth=2,
-                           label=valve,
-                           alpha=0.8)
-
-        # ZOOM на область первых выключений i-клапанов (примерно 9.0-9.5s)
-        ax_zoom.set_xlim(8.8, 9.8)
-        ax_zoom.set_ylim(-0.5, len(VALVE_ORDER) + 0.5)
-
-        # Анализируем и отмечаем выключения
-        print(f"\n[SHUTDOWN ANALYSIS]")
-        for valve in ['iFL', 'iFR', 'iRL', 'iRR']:
-            if valve in valve_timelines:
-                timeline = valve_timelines[valve]
-                shutdowns = []
-
-                for i in range(1, len(timeline)):
-                    prev_time, prev_active = timeline[i-1]
-                    curr_time, curr_active = timeline[i]
-
-                    # Если перешли из активного в неактивное - это выключение
-                    if prev_active and not curr_active and 8.8 <= curr_time <= 9.8:
-                        duration = curr_time - prev_time
-                        shutdowns.append((prev_time, curr_time, duration))
-
-                        # Отмечаем на графике
-                        ax_zoom.axvline(x=curr_time, color='red', linestyle='--', alpha=0.7, linewidth=1)
-                        ax_zoom.text(curr_time, VALVE_ORDER.index(valve) + 0.3, f'{valve} OFF\n{duration*1000:.0f}ms',
-                                    rotation=90, verticalalignment='bottom', fontsize=8, color='red')
-
-                if shutdowns:
-                    first_shutdown = shutdowns[0]
-                    print(f"{valve}: First shutdown at {first_shutdown[1]:.3f}s, Duration: {first_shutdown[2]:.3f}s ({(first_shutdown[2]*1000):.0f}ms)")
-
-        ax_zoom.set_xlabel('Time (seconds) - ZOOM VIEW')
-        ax_zoom.set_ylabel('Valves')
-        ax_zoom.set_title(f'Valve Shutdown Analysis - {filename}\n(First shutdowns around 9.2s)')
-        ax_zoom.grid(True, alpha=0.3)
-        ax_zoom.legend(loc='upper right')
-
-        # Сохраняем zoom график
-        zoom_graph_path = os.path.join(directory, f"valve_SHUTDOWN_ZOOM_{filename}_{timestamp}.png")
-        plt.savefig(zoom_graph_path, dpi=150, bbox_inches='tight')
-        plt.close(fig_zoom)
-
-        print(f"[ZoomDebug] Created shutdown analysis graph: {zoom_graph_path}")
-
-    except Exception as e:
-        print(f"[ZoomDebug] Error creating zoom graph: {e}")
 
 # Добавляем таблицу команд в отчет
 def get_command_reference_table():
@@ -1945,10 +2032,10 @@ BYTES  | ACTIVE VALVES           | DESCRIPTION
     # Создаем таблицу типичных команд
     common_commands = [
         ("00 00", "none", "All valves closed"),
-        ("00 02", "pu", "Pump only"),
-        ("00 22", "pu, sh1", "Pump + FL/RR Shuttle"),
-        ("00 42", "pu, sh2", "Pump + FR/RL Shuttle"),
-        ("00 62", "pu, sh1, sh2", "Pump + Both Shuttles"),
+        ("00 02", "pump", "Pump only"),
+        ("00 22", "pump, sha1", "Pump + FL/RR Shuttle"),
+        ("00 42", "pump, sha2", "Pump + FR/RL Shuttle"),
+        ("00 62", "pump, sha1, sha2", "Pump + Both Shuttles"),
         ("40 00", "iFL", "Inlet FL"),
         ("20 00", "iFR", "Inlet FR"),
         ("10 00", "iRL", "Inlet RL"),
@@ -1965,11 +2052,11 @@ BYTES  | ACTIVE VALVES           | DESCRIPTION
     table += """
 Valve Abbreviations Key:
 -----------------------
-pu   - Pump
-sh1  - FL/RR Electric Shuttle Valve
-sh2  - FR/RL Electric Shuttle Valve
-is1  - FL/RR Isolating Valve
-is2  - FR/RL Isolating Valve
+pump - Pump
+sha1 - FL/RR Electric Shuttle Valve
+sha2 - FR/RL Electric Shuttle Valve
+iso1 - FL/RR Isolating Valve
+iso2 - FR/RL Isolating Valve
 iFL  - Inlet Front Left
 iFR  - Inlet Front Right
 iRL  - Inlet Rear Left
@@ -2428,10 +2515,6 @@ def process_file(file_path, file_type='auto'):
         traceback.print_exc()
 
 
-
-# Также нужно обновить функции создания графика и отчета, чтобы они использовали output_dir:
-
-
 def main():
     """Main function with enhanced XLSX type support"""
     parser = argparse.ArgumentParser(description='Process CAN log files and analyze valve commands')
@@ -2459,13 +2542,11 @@ def main():
     path_to_file, directory, name_no_ext, extension = select_file("Select log file")
 
     if path_to_file:
-        process_file(path_to_file, args.type)  # Теперь передаем 2 аргумента
+        process_file(path_to_file, args.type)
     else:
         print("No file selected.")
 
     print("\nScript finished.")
-
-
 
 
 # Main execution
