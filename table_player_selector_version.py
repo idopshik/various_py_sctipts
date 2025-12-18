@@ -1,8 +1,9 @@
+
 """
 CAN Valve Control Sequence Player - TABLE SELECTOR VERSION
 =========================================================
-Проигрывает последовательность тестирования клапанов ESC по таблицам 1 или 2.
-Таблицы представлены в максимально читаемом виде с полными описаниями.
+Plays ESC valve testing sequence according to table 1 or 2.
+Tables are presented in a maximally readable format with full descriptions.
 """
 
 import can
@@ -12,7 +13,7 @@ import os
 from datetime import datetime
 from tqdm import tqdm
 
-# ANSI цветовые коды
+# ANSI color codes
 COLOR_RED = "\033[91m"
 COLOR_GREEN = "\033[92m"
 COLOR_YELLOW = "\033[93m"
@@ -22,174 +23,174 @@ COLOR_BLUE = "\033[94m"
 COLOR_MAGENTA = "\033[95m"
 COLOR_RESET = "\033[0m"
 
-# Временные интервалы (в секундах)
-T1 = 0.140  # базовый таймаут
-T2 = 0.070  # быстрая последовательность (циклы)
-T3 = 0.250  # смена диагоналей
-T4 = 0.400  # паузы между этапами
-T5 = 2.000  # очень длинные паузы (опустошение)
+# Time intervals (in seconds)
+T1 = 0.140  # base timeout
+T2 = 0.070  # fast sequence (cycles)
+T3 = 0.250  # diagonal change
+T4 = 0.400  # pauses between stages
+T5 = 2.000  # very long pauses (depressurization)
 
 # ============================================================================
-# TABLE 1 - ПОЛНАЯ ТАБЛИЦА (Одновременная работа обеих диагоналей)
+# TABLE 1 - FULL TABLE (Both diagonals working simultaneously)
 # ============================================================================
 TABLE_1 = {
-    "name": "TABLE 1 - ОБЕ ДИАГОНАЛИ ОДНОВРЕМЕННО",
-    "description": "Тестирование с включением ВСЕХ клапанов каждой диагонали одновременно",
+    "name": "Table 1 - Both diagonals simultaneously",
+    "description": "Testing with all valves of each diagonal enabled simultaneously",
     "sequence": [
-        # === ИНИЦИАЛИЗАЦИЯ ===
+        # === INITIALIZATION ===
         {"data": [0x02, 0x10, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00], "time": T1, "desc": "Extended Session"},
         {"data": [0x04, 0x14, 0xFF, 0xFF, 0xFF, 0x00, 0x00, 0x00], "time": T1, "desc": "Security Access"},
-        {"data": [0x02, 0x10, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00], "time": T1, "desc": "Повтор Extended Session"},
+        {"data": [0x02, 0x10, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00], "time": T1, "desc": "Repeat Extended Session"},
         {"data": [0x02, 0x3E, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00], "time": T4, "desc": "Tester Present"},
         {"data": [0x02, 0x3E, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00], "time": T4, "desc": "Tester Present"},
         {"data": [0x02, 0x3E, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00], "time": T4, "desc": "Tester Present"},
 
-        # === ОСНОВНАЯ ПОСЛЕДОВАТЕЛЬНОСТЬ TABLE 1 ===
-        # Шаг 1-2: Инициализация
-        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x00, 0x00, 0x00], "time": T1, "desc": "1. ВСЕ ВЫКЛ"},
-        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x00, 0x40, 0x00], "time": T1, "desc": "2. МОТОР НАСОСА ВКЛ"},
-        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x05, 0x40, 0x00], "time": T1, "desc": "3. ВПУСКНЫЕ КЛАПАНЫ ПЕРЕДНЕЙ ОСИ ВКЛ"},
-        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x55, 0x40, 0x00], "time": T1, "desc": "4. ВПУСКНЫЕ КЛАПАНЫ ЗАДНЕЙ ОСИ ВКЛ"},
-        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x55, 0x43, 0x00], "time": T1, "desc": "5. USV1 и USV2 ВКЛ (ISO_1 FR_RL и ISO_2 FL_RR)"},
-        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x55, 0x4F, 0x00], "time": T1, "desc": "6. HSV1 и HSV2 ВКЛ (SHU_1 FR_RL и SHU_2 FL_RR)"},
+        # === MAIN SEQUENCE OF TABLE 1 ===
+        # Step 1-2: Initialization
+        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x00, 0x00, 0x00], "time": T1, "desc": "1. All off"},
+        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x00, 0x40, 0x00], "time": T1, "desc": "2. Pump motor on"},
+        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x05, 0x40, 0x00], "time": T1, "desc": "3. Inlet valves front axle on"},
+        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x55, 0x40, 0x00], "time": T1, "desc": "4. Inlet valves rear axle on"},
+        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x55, 0x43, 0x00], "time": T1, "desc": "5. USV1 and USV2 on (ISO_1 FR_RL and ISO_2 FL_RR)"},
+        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x55, 0x4F, 0x00], "time": T1, "desc": "6. HSV1 and HSV2 on (SHU_1 FR_RL and SHU_2 FL_RR)"},
 
-        # FL Колесо (Переднее Левое) - диагональ FL_RR
-        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x54, 0x4F, 0x00], "time": T4, "desc": "7. EVFL ВЫКЛ"},
-        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x55, 0x4F, 0x00], "time": T1, "desc": "8. EVFL ВКЛ"},
+        # FL wheel (Front Left) - diagonal FL_RR
+        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x54, 0x4F, 0x00], "time": T4, "desc": "7. EVFL off"},
+        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x55, 0x4F, 0x00], "time": T1, "desc": "8. EVFL on"},
 
-        # ЦИКЛ FL: 5 включений/выключений
-        {"repeat": 5, "on": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x55, 0x4F, 0x00], "off": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x54, 0x4F, 0x00], "time": T2, "desc": "FL цикл"},
+        # CYCLE FL: 5 on/off cycles
+        {"repeat": 5, "on": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x55, 0x4F, 0x00], "off": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x54, 0x4F, 0x00], "time": T2, "desc": "FL cycle"},
 
-        # Переключение на FR
-        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x55, 0x43, 0x00], "time": T1, "desc": "11. HSV1 и HSV2 ВЫКЛ"},
-        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x57, 0x43, 0x00], "time": T3, "desc": "12. AVFL ВКЛ"},
-        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x55, 0x43, 0x00], "time": T4, "desc": "13. AVFL ВЫКЛ"},
-        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x55, 0x4F, 0x00], "time": T1, "desc": "14. HSV1 и HSV2 ВКЛ"},
+        # Switch to FR
+        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x55, 0x43, 0x00], "time": T1, "desc": "11. HSV1 and HSV2 off"},
+        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x57, 0x43, 0x00], "time": T3, "desc": "12. AVFL on"},
+        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x55, 0x43, 0x00], "time": T4, "desc": "13. AVFL off"},
+        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x55, 0x4F, 0x00], "time": T1, "desc": "14. HSV1 and HSV2 on"},
 
-        # FR Колесо (Переднее Правое) - диагональ FR_RL
-        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x51, 0x4F, 0x00], "time": T4, "desc": "15. EVFR ВЫКЛ"},
-        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x55, 0x4F, 0x00], "time": T1, "desc": "16. EVFR ВКЛ"},
+        # FR wheel (Front Right) - diagonal FR_RL
+        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x51, 0x4F, 0x00], "time": T4, "desc": "15. EVFR off"},
+        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x55, 0x4F, 0x00], "time": T1, "desc": "16. EVFR on"},
 
-        # ЦИКЛ FR: 5 включений/выключений
-        {"repeat": 5, "on": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x55, 0x4F, 0x00], "off": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x51, 0x4F, 0x00], "time": T2, "desc": "FR цикл"},
+        # CYCLE FR: 5 on/off cycles
+        {"repeat": 5, "on": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x55, 0x4F, 0x00], "off": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x51, 0x4F, 0x00], "time": T2, "desc": "FR cycle"},
 
-        # Переключение на RL
-        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x55, 0x43, 0x00], "time": T4, "desc": "19. HSV1 и HSV2 ВЫКЛ"},
-        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x5D, 0x43, 0x00], "time": T3, "desc": "20. AVFR ВКЛ"},
-        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x55, 0x43, 0x00], "time": T4, "desc": "21. AVFR ВЫКЛ"},
-        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x55, 0x4F, 0x00], "time": T1, "desc": "22. HSV1 и HSV2 ВКЛ"},
+        # Switch to RL
+        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x55, 0x43, 0x00], "time": T4, "desc": "19. HSV1 and HSV2 off"},
+        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x5D, 0x43, 0x00], "time": T3, "desc": "20. AVFR on"},
+        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x55, 0x43, 0x00], "time": T4, "desc": "21. AVFR off"},
+        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x55, 0x4F, 0x00], "time": T1, "desc": "22. HSV1 and HSV2 on"},
 
-        # RL Колесо (Заднее Левое) - диагональ FR_RL
-        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x45, 0x4F, 0x00], "time": T4, "desc": "23. EVRL ВЫКЛ"},
-        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x55, 0x4F, 0x00], "time": T1, "desc": "24. EVRL ВКЛ"},
+        # RL wheel (Rear Left) - diagonal FR_RL
+        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x45, 0x4F, 0x00], "time": T4, "desc": "23. EVRL off"},
+        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x55, 0x4F, 0x00], "time": T1, "desc": "24. EVRL on"},
 
-        # ЦИКЛ RL: 5 включений/выключений
-        {"repeat": 5, "on": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x55, 0x4F, 0x00], "off": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x45, 0x4F, 0x00], "time": T2, "desc": "RL цикл"},
+        # CYCLE RL: 5 on/off cycles
+        {"repeat": 5, "on": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x55, 0x4F, 0x00], "off": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x45, 0x4F, 0x00], "time": T2, "desc": "RL cycle"},
 
-        # Переключение на RR
-        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x55, 0x43, 0x00], "time": T4, "desc": "27. HSV1 и HSV2 ВЫКЛ"},
-        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x75, 0x43, 0x00], "time": T3, "desc": "28. AVRL ВКЛ"},
-        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x55, 0x43, 0x00], "time": T3, "desc": "29. AVRL ВЫКЛ"},
-        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x55, 0x4F, 0x00], "time": T4, "desc": "30. HSV1 и HSV2 ВКЛ"},
+        # Switch to RR
+        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x55, 0x43, 0x00], "time": T4, "desc": "27. HSV1 and HSV2 off"},
+        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x75, 0x43, 0x00], "time": T3, "desc": "28. AVRL on"},
+        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x55, 0x43, 0x00], "time": T3, "desc": "29. AVRL off"},
+        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x55, 0x4F, 0x00], "time": T4, "desc": "30. HSV1 and HSV2 on"},
 
-        # RR Колесо (Заднее Правое) - диагональ FL_RR
-        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x15, 0x4F, 0x00], "time": T1, "desc": "31. EVRR ВЫКЛ (T1)"},
-        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x55, 0x4F, 0x00], "time": T4, "desc": "32. EVRR ВКЛ"},
+        # RR wheel (Rear Right) - diagonal FL_RR
+        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x15, 0x4F, 0x00], "time": T1, "desc": "31. EVRR off (T1)"},
+        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x55, 0x4F, 0x00], "time": T4, "desc": "32. EVRR on"},
 
-        # ЦИКЛ RR: 5 включений/выключений
-        {"repeat": 5, "on": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x55, 0x4F, 0x00], "off": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x15, 0x4F, 0x00], "time": T2, "desc": "RR цикл"},
+        # CYCLE RR: 5 on/off cycles
+        {"repeat": 5, "on": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x55, 0x4F, 0x00], "off": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x15, 0x4F, 0x00], "time": T2, "desc": "RR cycle"},
 
-        # Завершение
-        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x55, 0x43, 0x00], "time": T4, "desc": "35. HSV1 и HSV2 ВЫКЛ"},
-        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0xD5, 0x43, 0x00], "time": T3, "desc": "36. AVRR ВКЛ"},
-        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x55, 0x43, 0x00], "time": T4, "desc": "37. AVRR ВЫКЛ"},
-        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x55, 0x40, 0x00], "time": T1, "desc": "38. USV1 и USV2 ВЫКЛ"},
-        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x50, 0x40, 0x00], "time": T1, "desc": "39. ВПУСКНЫЕ КЛАПАНЫ ПЕРЕДНЕЙ ОСИ ВЫКЛ"},
-        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x00, 0x40, 0x00], "time": T1, "desc": "40. ВПУСКНЫЕ КЛАПАНЫ ЗАДНЕЙ ОСИ ВЫКЛ"},
-        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x00, 0x40, 0x00], "time": T5, "desc": "41. ВСЕ КЛАПАНЫ ВЫКЛ (ОПУСТОШЕНИЕ)"},
-        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x00, 0x00, 0x00], "time": 0.1, "desc": "42. МОТОР НАСОСА ВЫКЛ"},
+        # Finalization
+        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x55, 0x43, 0x00], "time": T4, "desc": "35. HSV1 and HSV2 off"},
+        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0xD5, 0x43, 0x00], "time": T3, "desc": "36. AVRR on"},
+        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x55, 0x43, 0x00], "time": T4, "desc": "37. AVRR off"},
+        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x55, 0x40, 0x00], "time": T1, "desc": "38. USV1 and USV2 off"},
+        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x50, 0x40, 0x00], "time": T1, "desc": "39. Inlet valves front axle off"},
+        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x00, 0x40, 0x00], "time": T1, "desc": "40. Inlet valves rear axle off"},
+        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x00, 0x40, 0x00], "time": T5, "desc": "41. All valves off (depressurization)"},
+        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x00, 0x00, 0x00], "time": 0.1, "desc": "42. Pump motor off"},
     ]
 }
 
 # ============================================================================
-# TABLE 2 - РАЗДЕЛЬНАЯ ТАБЛИЦА (Поочередная работа диагоналей)
+# TABLE 2 - SEPARATE TABLE (Alternating diagonal work)
 # ============================================================================
 TABLE_2 = {
-    "name": "TABLE 2 - РАЗДЕЛЬНО ПО ДИАГОНАЛЯМ",
-    "description": "Тестирование с раздельным управлением клапанами диагоналей FR_RL и FL_RR",
+    "name": "Table 2 - Separately by diagonals",
+    "description": "Testing with separate control of valves on diagonals FR_RL and FL_RR",
     "sequence": [
-        # === ИНИЦИАЛИЗАЦИЯ ===
+        # === INITIALIZATION ===
         {"data": [0x02, 0x10, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00], "time": T1, "desc": "Extended Session"},
         {"data": [0x04, 0x14, 0xFF, 0xFF, 0xFF, 0x00, 0x00, 0x00], "time": T1, "desc": "Security Access"},
-        {"data": [0x02, 0x10, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00], "time": T1, "desc": "Повтор Extended Session"},
+        {"data": [0x02, 0x10, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00], "time": T1, "desc": "Repeat Extended Session"},
         {"data": [0x02, 0x3E, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00], "time": T4, "desc": "Tester Present"},
         {"data": [0x02, 0x3E, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00], "time": T4, "desc": "Tester Present"},
         {"data": [0x02, 0x3E, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00], "time": T4, "desc": "Tester Present"},
 
-        # === ОСНОВНАЯ ПОСЛЕДОВАТЕЛЬНОСТЬ TABLE 2 ===
-        # Шаг 1-2: Инициализация
-        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x00, 0x00, 0x00], "time": T1, "desc": "1. ВСЕ ВЫКЛ"},
-        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x00, 0x40, 0x00], "time": T1, "desc": "2. МОТОР НАСОСА ВКЛ"},
-        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x05, 0x40, 0x00], "time": T1, "desc": "3. ВПУСКНЫЕ КЛАПАНЫ ПЕРЕДНЕЙ ОСИ ВКЛ"},
-        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x55, 0x40, 0x00], "time": T1, "desc": "4. ВПУСКНЫЕ КЛАПАНЫ ЗАДНЕЙ ОСИ ВКЛ"},
-        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x55, 0x42, 0x00], "time": T1, "desc": "5. USV2 ВКЛ (ISO_2 - ДИАГОНАЛЬ FL_RR)"},
-        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x55, 0x4A, 0x00], "time": T1, "desc": "6. HSV2 ВКЛ (SHU_2 - ДИАГОНАЛЬ FL_RR)"},
+        # === MAIN SEQUENCE OF TABLE 2 ===
+        # Step 1-2: Initialization
+        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x00, 0x00, 0x00], "time": T1, "desc": "1. All off"},
+        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x00, 0x40, 0x00], "time": T1, "desc": "2. Pump motor on"},
+        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x05, 0x40, 0x00], "time": T1, "desc": "3. Inlet valves front axle on"},
+        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x55, 0x40, 0x00], "time": T1, "desc": "4. Inlet valves rear axle on"},
+        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x55, 0x42, 0x00], "time": T1, "desc": "5. USV2 on (ISO_2 - diagonal FL_RR)"},
+        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x55, 0x4A, 0x00], "time": T1, "desc": "6. HSV2 on (SHU_2 - diagonal FL_RR)"},
 
-        # FL Колесо (Переднее Левое) - ДИАГОНАЛЬ FL_RR АКТИВНА
-        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x54, 0x4A, 0x00], "time": T4, "desc": "7. EVFL ВЫКЛ"},
-        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x55, 0x4A, 0x00], "time": T1, "desc": "8. EVFL ВКЛ"},
+        # FL wheel (Front Left) - diagonal FL_RR active
+        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x54, 0x4A, 0x00], "time": T4, "desc": "7. EVFL off"},
+        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x55, 0x4A, 0x00], "time": T1, "desc": "8. EVFL on"},
 
-        # ЦИКЛ FL: 5 включений/выключений
-        {"repeat": 5, "on": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x55, 0x4A, 0x00], "off": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x54, 0x4A, 0x00], "time": T2, "desc": "FL цикл"},
+        # CYCLE FL: 5 on/off cycles
+        {"repeat": 5, "on": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x55, 0x4A, 0x00], "off": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x54, 0x4A, 0x00], "time": T2, "desc": "FL cycle"},
 
-        # Переключение на FR (МЕНЯЕМ ДИАГОНАЛЬ: FL_RR → FR_RL)
-        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x55, 0x42, 0x00], "time": T1, "desc": "11. HSV2 ВЫКЛ (SHU_2)"},
-        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x57, 0x41, 0x00], "time": T3, "desc": "12. AVFL ВКЛ, USV1 ВКЛ, USV2 ВЫКЛ"},
-        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x55, 0x41, 0x00], "time": T4, "desc": "13. AVFL ВЫКЛ"},
-        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x55, 0x45, 0x00], "time": T1, "desc": "14. HSV1 ВКЛ (SHU_1 - ДИАГОНАЛЬ FR_RL)"},
+        # Switch to FR (CHANGE DIAGONAL: FL_RR → FR_RL)
+        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x55, 0x42, 0x00], "time": T1, "desc": "11. HSV2 off (SHU_2)"},
+        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x57, 0x41, 0x00], "time": T3, "desc": "12. AVFL on, USV1 on, USV2 off"},
+        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x55, 0x41, 0x00], "time": T4, "desc": "13. AVFL off"},
+        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x55, 0x45, 0x00], "time": T1, "desc": "14. HSV1 on (SHU_1 - diagonal FR_RL)"},
 
-        # FR Колесо (Переднее Правое) - ДИАГОНАЛЬ FR_RL АКТИВНА
-        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x51, 0x45, 0x00], "time": T4, "desc": "15. EVFR ВЫКЛ"},
-        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x55, 0x45, 0x00], "time": T1, "desc": "16. EVFR ВКЛ"},
+        # FR wheel (Front Right) - diagonal FR_RL active
+        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x51, 0x45, 0x00], "time": T4, "desc": "15. EVFR off"},
+        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x55, 0x45, 0x00], "time": T1, "desc": "16. EVFR on"},
 
-        # ЦИКЛ FR: 5 включений/выключений
-        {"repeat": 5, "on": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x55, 0x45, 0x00], "off": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x51, 0x45, 0x00], "time": T2, "desc": "FR цикл"},
+        # CYCLE FR: 5 on/off cycles
+        {"repeat": 5, "on": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x55, 0x45, 0x00], "off": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x51, 0x45, 0x00], "time": T2, "desc": "FR cycle"},
 
-        # Переключение на RL (ОСТАЕМСЯ НА ДИАГОНАЛИ FR_RL)
-        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x55, 0x41, 0x00], "time": T4, "desc": "19. HSV1 ВЫКЛ (SHU_1)"},
-        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x5D, 0x41, 0x00], "time": T3, "desc": "20. AVFR ВКЛ"},
-        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x55, 0x41, 0x00], "time": T4, "desc": "21. AVFR ВЫКЛ"},
-        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x55, 0x45, 0x00], "time": T1, "desc": "22. HSV1 ВКЛ (SHU_1)"},
+        # Switch to RL (STAY ON DIAGONAL FR_RL)
+        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x55, 0x41, 0x00], "time": T4, "desc": "19. HSV1 off (SHU_1)"},
+        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x5D, 0x41, 0x00], "time": T3, "desc": "20. AVFR on"},
+        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x55, 0x41, 0x00], "time": T4, "desc": "21. AVFR off"},
+        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x55, 0x45, 0x00], "time": T1, "desc": "22. HSV1 on (SHU_1)"},
 
-        # RL Колесо (Заднее Левое) - ДИАГОНАЛЬ FR_RL АКТИВНА
-        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x45, 0x45, 0x00], "time": T4, "desc": "23. EVRL ВЫКЛ"},
-        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x55, 0x45, 0x00], "time": T1, "desc": "24. EVRL ВКЛ"},
+        # RL wheel (Rear Left) - diagonal FR_RL active
+        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x45, 0x45, 0x00], "time": T4, "desc": "23. EVRL off"},
+        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x55, 0x45, 0x00], "time": T1, "desc": "24. EVRL on"},
 
-        # ЦИКЛ RL: 5 включений/выключений
-        {"repeat": 5, "on": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x55, 0x45, 0x00], "off": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x45, 0x45, 0x00], "time": T2, "desc": "RL цикл"},
+        # CYCLE RL: 5 on/off cycles
+        {"repeat": 5, "on": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x55, 0x45, 0x00], "off": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x45, 0x45, 0x00], "time": T2, "desc": "RL cycle"},
 
-        # Переключение на RR (МЕНЯЕМ ДИАГОНАЛЬ: FR_RL → FL_RR)
-        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x55, 0x41, 0x00], "time": T4, "desc": "27. HSV1 ВЫКЛ (SHU_1)"},
-        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x75, 0x42, 0x00], "time": T3, "desc": "28. AVRL ВКЛ, USV2 ВКЛ, USV1 ВЫКЛ"},
-        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x55, 0x42, 0x00], "time": T3, "desc": "29. AVRL ВЫКЛ"},
-        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x55, 0x4A, 0x00], "time": T4, "desc": "30. HSV2 ВКЛ (SHU_2 - ДИАГОНАЛЬ FL_RR)"},
+        # Switch to RR (CHANGE DIAGONAL: FR_RL → FL_RR)
+        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x55, 0x41, 0x00], "time": T4, "desc": "27. HSV1 off (SHU_1)"},
+        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x75, 0x42, 0x00], "time": T3, "desc": "28. AVRL on, USV2 on, USV1 off"},
+        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x55, 0x42, 0x00], "time": T3, "desc": "29. AVRL off"},
+        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x55, 0x4A, 0x00], "time": T4, "desc": "30. HSV2 on (SHU_2 - diagonal FL_RR)"},
 
-        # RR Колесо (Заднее Правое) - ДИАГОНАЛЬ FL_RR АКТИВНА
-        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x15, 0x4A, 0x00], "time": T1, "desc": "31. EVRR ВЫКЛ (T1)"},
-        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x55, 0x4A, 0x00], "time": T4, "desc": "32. EVRR ВКЛ"},
+        # RR wheel (Rear Right) - diagonal FL_RR active
+        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x15, 0x4A, 0x00], "time": T1, "desc": "31. EVRR off (T1)"},
+        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x55, 0x4A, 0x00], "time": T4, "desc": "32. EVRR on"},
 
-        # ЦИКЛ RR: 5 включений/выключений
-        {"repeat": 5, "on": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x55, 0x4A, 0x00], "off": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x15, 0x4A, 0x00], "time": T2, "desc": "RR цикл"},
+        # CYCLE RR: 5 on/off cycles
+        {"repeat": 5, "on": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x55, 0x4A, 0x00], "off": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x15, 0x4A, 0x00], "time": T2, "desc": "RR cycle"},
 
-        # Завершение
-        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x55, 0x42, 0x00], "time": T4, "desc": "35. HSV2 ВЫКЛ (SHU_2)"},
-        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0xD5, 0x42, 0x00], "time": T3, "desc": "36. AVRR ВКЛ"},
-        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x55, 0x42, 0x00], "time": T4, "desc": "37. AVRR ВЫКЛ"},
-        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x55, 0x40, 0x00], "time": T1, "desc": "38. USV2 ВЫКЛ"},
-        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x50, 0x40, 0x00], "time": T1, "desc": "39. ВПУСКНЫЕ КЛАПАНЫ ПЕРЕДНЕЙ ОСИ ВЫКЛ"},
-        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x00, 0x40, 0x00], "time": T1, "desc": "40. ВПУСКНЫЕ КЛАПАНЫ ЗАДНЕЙ ОСИ ВЫКЛ"},
-        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x00, 0x40, 0x00], "time": T5, "desc": "41. ВСЕ КЛАПАНЫ ВЫКЛ (ОПУСТОШЕНИЕ)"},
-        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x00, 0x00, 0x00], "time": 0.1, "desc": "42. МОТОР НАСОСА ВЫКЛ"},
+        # Finalization
+        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x55, 0x42, 0x00], "time": T4, "desc": "35. HSV2 off (SHU_2)"},
+        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0xD5, 0x42, 0x00], "time": T3, "desc": "36. AVRR on"},
+        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x55, 0x42, 0x00], "time": T4, "desc": "37. AVRR off"},
+        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x55, 0x40, 0x00], "time": T1, "desc": "38. USV2 off"},
+        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x50, 0x40, 0x00], "time": T1, "desc": "39. Inlet valves front axle off"},
+        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x00, 0x40, 0x00], "time": T1, "desc": "40. Inlet valves rear axle off"},
+        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x00, 0x40, 0x00], "time": T5, "desc": "41. All valves off (depressurization)"},
+        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x00, 0x00, 0x00], "time": 0.1, "desc": "42. Pump motor off"},
     ]
 }
 
@@ -202,20 +203,29 @@ class ValveController:
         self.bus = None
         self.logger = None
         self.current_wheel = "FL"
-        self.current_diagonal = "FL_RR"  # Для Table 2
+        self.current_diagonal = "FL_RR"  # For Table 2
 
     def connect(self):
-        """Подключение к CAN шине и инициализация логгера"""
+        """Connect to CAN bus and initialize logger"""
         try:
             if self.use_virtual:
-                print(f"{COLOR_WHITE}Подключение к VIRTUAL каналу {self.channel}...{COLOR_RESET}")
+                print(f"{COLOR_WHITE}Connecting to VIRTUAL channel {self.channel}...{COLOR_RESET}")
                 self.bus = can.Bus(
                     interface='virtual',
                     channel=self.channel,
                     receive_own_messages=True
                 )
             else:
-                print(f"{COLOR_WHITE}Подключение к Kvaser каналу {self.channel}...{COLOR_RESET}")
+                print(f"{COLOR_WHITE}Connecting to Kvaser channel {self.channel}...{COLOR_RESET}")
+
+                # Debug
+                try:
+                    from can.interfaces import kvaser
+                    available_channels = kvaser.detect_available_configs()
+                    print(f"{COLOR_YELLOW}Available Kvaser channels: {available_channels}{COLOR_RESET}")
+                except Exception as e:
+                    print(f"{COLOR_RED}Error detecting Kvaser: {e}{COLOR_RESET}")
+
                 self.bus = can.Bus(
                     interface='kvaser',
                     channel=self.channel,
@@ -223,21 +233,21 @@ class ValveController:
                     accept_virtual=True
                 )
 
-            print(f"{COLOR_GREEN}Успешно подключено к CAN шине{COLOR_RESET}")
+            print(f"{COLOR_GREEN}Successfully connected to CAN bus{COLOR_RESET}")
 
             if self.blf_output:
                 os.makedirs(os.path.dirname(self.blf_output) if os.path.dirname(self.blf_output) else '.', exist_ok=True)
                 self.logger = can.BLFWriter(self.blf_output)
-                print(f"{COLOR_GREEN}Логгирование в файл: {self.blf_output}{COLOR_RESET}")
+                print(f"{COLOR_GREEN}Logging to file: {self.blf_output}{COLOR_RESET}")
 
             return True
 
         except Exception as e:
-            print(f"{COLOR_RED}Ошибка подключения: {e}{COLOR_RESET}")
+            print(f"{COLOR_RED}Connection error: {e}{COLOR_RESET}")
             return False
 
     def disconnect(self):
-        """Отключение от CAN шины и закрытие логгера"""
+        """Disconnect from CAN bus and close logger"""
         if self.bus:
             self.bus.shutdown()
             self.bus = None
@@ -247,14 +257,14 @@ class ValveController:
             self.logger = None
 
     def log_message(self, msg):
-        """Записывает сообщение в логгер"""
+        """Log message to logger"""
         if self.logger:
             self.logger.on_message_received(msg)
 
     def send_command(self, data, description="", stage_time=T1):
-        """Отправка команды с выдержкой времени этапа"""
+        """Send command with stage time delay"""
         if not self.bus:
-            print(f"{COLOR_RED}CAN шина не подключена!{COLOR_RESET}")
+            print(f"{COLOR_RED}CAN bus not connected!{COLOR_RESET}")
             return False
 
         try:
@@ -276,7 +286,7 @@ class ValveController:
             if description:
                 print(f"{COLOR_CYAN}# {description}{COLOR_RESET}")
 
-            # Выдерживаем время этапа
+            # Maintain stage time
             elapsed = time.time() - stage_start
             remaining = stage_time - elapsed
             if remaining > 0:
@@ -285,20 +295,20 @@ class ValveController:
             return True
 
         except Exception as e:
-            print(f"{COLOR_RED}Ошибка отправки: {e}{COLOR_RESET}")
+            print(f"{COLOR_RED}Send error: {e}{COLOR_RESET}")
             return False
 
     def switch_wheel(self, new_wheel, diagonal=None):
-        """Переключение на следующее колесо и/или диагональ"""
+        """Switch to next wheel and/or diagonal"""
         if new_wheel != self.current_wheel:
             diag_info = f" ({diagonal})" if diagonal else ""
-            print(f"{COLOR_CYAN}>>> Переключение с {self.current_wheel} на {new_wheel}{diag_info}{COLOR_RESET}")
+            print(f"{COLOR_CYAN}>>> Switching from {self.current_wheel} to {new_wheel}{diag_info}{COLOR_RESET}")
             self.current_wheel = new_wheel
             if diagonal:
                 self.current_diagonal = diagonal
 
     def run_table_sequence(self, table_data):
-        """Запуск последовательности выбранной таблицы"""
+        """Run selected table sequence"""
         if not self.connect():
             return False
 
@@ -308,145 +318,145 @@ class ValveController:
             print(f"{COLOR_YELLOW}{table_data['description']}{COLOR_RESET}")
             print(f"{COLOR_YELLOW}{'='*80}{COLOR_RESET}")
 
-            print(f"{COLOR_WHITE}Временные интервалы: T1={T1}s, T2={T2}s, T3={T3}s, T4={T4}s, T5={T5}s{COLOR_RESET}")
+            print(f"{COLOR_WHITE}Time intervals: T1={T1}s, T2={T2}s, T3={T3}s, T4={T4}s, T5={T5}s{COLOR_RESET}")
             if self.blf_output:
-                print(f"{COLOR_WHITE}Логгирование: {self.blf_output}{COLOR_RESET}")
+                print(f"{COLOR_WHITE}Logging: {self.blf_output}{COLOR_RESET}")
             print()
 
-            # Подсчет общего количества шагов для прогресс-бара
+            # Count total steps for progress bar
             total_steps = 0
             for step in table_data["sequence"]:
                 if "repeat" in step:
-                    total_steps += step["repeat"] * 2  # on + off для каждого повторения
+                    total_steps += step["repeat"] * 2  # on + off for each repeat
                 else:
                     total_steps += 1
 
-            # Прогресс-бар
-            pbar = tqdm(total=total_steps, desc="Отправка команд", unit="msg", ncols=100)
+            # Progress bar
+            pbar = tqdm(total=total_steps, desc="Sending commands", unit="msg", ncols=100)
 
             start_time = time.time()
 
-            # Воспроизведение последовательности
+            # Play sequence
             for step in table_data["sequence"]:
                 if "repeat" in step:
-                    # Циклический шаг
-                    # ИСПРАВЛЕНО: безопасное получение времени с fallback
+                    # Cyclic step
+                    # FIXED: safe time retrieval with fallback
                     default_time = step.get("time", T2)
                     off_time = step.get("off_time", default_time)
                     on_time = step.get("on_time", default_time)
 
                     for i in range(step["repeat"]):
-                        # OFF команда
+                        # OFF command
                         self.send_command(step["off"], f"{step['desc']} - OFF ({i+1}/{step['repeat']})", off_time)
                         pbar.update(1)
 
-                        # ON команда
+                        # ON command
                         self.send_command(step["on"], f"{step['desc']} - ON ({i+1}/{step['repeat']})", on_time)
                         pbar.update(1)
                 else:
-                    # Одиночный шаг
+                    # Single step
                     self.send_command(step["data"], step["desc"], step["time"])
                     pbar.update(1)
 
             pbar.close()
 
             total_time = time.time() - start_time
-            print(f"\n{COLOR_GREEN}Таблица {table_data['name']} завершена за {total_time:.1f} секунд!{COLOR_RESET}")
+            print(f"\n{COLOR_GREEN}Table {table_data['name']} completed in {total_time:.1f} seconds!{COLOR_RESET}")
             return True
 
         except KeyboardInterrupt:
-            print(f"\n{COLOR_YELLOW}Остановлено пользователем{COLOR_RESET}")
+            print(f"\n{COLOR_YELLOW}Stopped by user{COLOR_RESET}")
             return False
         except Exception as e:
-            print(f"{COLOR_RED}Ошибка выполнения: {e}{COLOR_RESET}")
+            print(f"{COLOR_RED}Execution error: {e}{COLOR_RESET}")
             return False
         finally:
             self.disconnect()
 
 def print_table_comparison():
-    """Печать сравнения таблиц"""
+    """Print table comparison"""
     print(f"\n{COLOR_MAGENTA}{'='*80}{COLOR_RESET}")
-    print(f"{COLOR_MAGENTA}СРАВНЕНИЕ ТАБЛИЦ ТЕСТИРОВАНИЯ КЛАПАНОВ ESC{COLOR_RESET}")
+    print(f"{COLOR_MAGENTA}ESC VALVE TESTING TABLES COMPARISON{COLOR_RESET}")
     print(f"{COLOR_MAGENTA}{'='*80}{COLOR_RESET}")
 
-    print(f"\n{COLOR_BLUE}ТАБЛИЦА 1:{COLOR_RESET}")
-    print(f"  {COLOR_WHITE}• Название: {TABLE_1['name']}{COLOR_RESET}")
-    print(f"  {COLOR_WHITE}• Описание: {TABLE_1['description']}{COLOR_RESET}")
-    print(f"  {COLOR_WHITE}• Особенности:{COLOR_RESET}")
-    print(f"    - Обе диагонали работают одновременно")
-    print(f"    - Все USV (изоляционные) и HSV (шатунные) клапаны включены сразу")
-    print(f"    - Используются данные: 55 43, 55 4F")
+    print(f"\n{COLOR_BLUE}TABLE 1:{COLOR_RESET}")
+    print(f"  {COLOR_WHITE}• Name: {TABLE_1['name']}{COLOR_RESET}")
+    print(f"  {COLOR_WHITE}• Description: {TABLE_1['description']}{COLOR_RESET}")
+    print(f"  {COLOR_WHITE}• Features:{COLOR_RESET}")
+    print(f"    - Both diagonals work simultaneously")
+    print(f"    - All USV (isolation) and HSV (shuttle) valves are enabled at once")
+    print(f"    - Uses data: 55 43, 55 4F")
 
-    print(f"\n{COLOR_BLUE}ТАБЛИЦА 2:{COLOR_RESET}")
-    print(f"  {COLOR_WHITE}• Название: {TABLE_2['name']}{COLOR_RESET}")
-    print(f"  {COLOR_WHITE}• Описание: {TABLE_2['description']}{COLOR_RESET}")
-    print(f"  {COLOR_WHITE}• Особенности:{COLOR_RESET}")
-    print(f"    - Диагонали работают поочередно")
-    print(f"    - USV и HSV включаются только для активной диагонали")
-    print(f"    - Используются данные: 55 42, 55 4A (диагональ FL_RR) и 55 41, 55 45 (диагональ FR_RL)")
-    print(f"    - Более точное изолированное тестирование")
+    print(f"\n{COLOR_BLUE}TABLE 2:{COLOR_RESET}")
+    print(f"  {COLOR_WHITE}• Name: {TABLE_2['name']}{COLOR_RESET}")
+    print(f"  {COLOR_WHITE}• Description: {TABLE_2['description']}{COLOR_RESET}")
+    print(f"  {COLOR_WHITE}• Features:{COLOR_RESET}")
+    print(f"    - Diagonals work alternately")
+    print(f"    - USV and HSV are enabled only for active diagonal")
+    print(f"    - Uses data: 55 42, 55 4A (diagonal FL_RR) and 55 41, 55 45 (diagonal FR_RL)")
+    print(f"    - More precise isolated testing")
 
     print(f"\n{COLOR_MAGENTA}{'='*80}{COLOR_RESET}")
 
 def generate_blf_filename(table_num):
-    """Генерирует имя BLF файла на основе текущего времени и номера таблицы"""
+    """Generate BLF filename based on current time and table number"""
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     return f"valve_table{table_num}_{timestamp}.blf"
 
 def main():
     parser = argparse.ArgumentParser(
-        description='Valve Control Sequence Player - Выбор таблицы тестирования',
+        description='Valve Control Sequence Player - Table selection for testing',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
-Примеры использования:
-  %(prog)s --table 1           # Запустить таблицу 1
-  %(prog)s --table 2           # Запустить таблицу 2
-  %(prog)s --table 1 --no-virtual  # Использовать реальный CAN интерфейс
-  %(prog)s --table 2 --channel 1   # Использовать CAN канал 1
+Usage examples:
+  %(prog)s --table 1           # Run table 1
+  %(prog)s --table 2           # Run table 2
+  %(prog)s --table 1 --no-virtual  # Use real CAN interface
+  %(prog)s --table 2 --channel 1   # Use CAN channel 1
         """
     )
 
     parser.add_argument('--table', '-t', type=int, choices=[1, 2], default=1,
-                       help='Номер таблицы для выполнения (1 или 2, по умолчанию: 1)')
-    parser.add_argument('--virtual', '-v', action='store_true', default=True,
-                       help='Использовать виртуальный CAN канал (по умолчанию: True)')
+                       help='Table number to execute (1 or 2, default: 1)')
+    parser.add_argument('--virtual', '-v', action='store_true', default=False,
+                       help='Use virtual CAN channel (default: False)')
     parser.add_argument('--no-virtual', action='store_false', dest='virtual',
-                       help='Использовать реальный CAN интерфейс (Kvaser)')
+                       help='Use real CAN interface (Kvaser)')
     parser.add_argument('--channel', '-c', type=int, default=0,
-                       help='Номер CAN канала (по умолчанию: 0)')
+                       help='CAN channel number (default: 0)')
     parser.add_argument('--bitrate', '-b', type=int, default=500000,
-                       help='Скорость CAN шины (по умолчанию: 500000)')
+                       help='CAN bus speed (default: 500000)')
     parser.add_argument('--blf', action='store_true', default=True,
-                       help='Включить логирование в BLF файл (по умолчанию: True)')
+                       help='Enable BLF logging (default: True)')
     parser.add_argument('--no-blf', action='store_false', dest='blf',
-                       help='Отключить логирование в BLF файл')
+                       help='Disable BLF logging')
     parser.add_argument('--blf-file', type=str, default=None,
-                       help='Путь к файлу BLF (по умолчанию: авто-генерация)')
+                       help='BLF output file path (default: auto-generated)')
     parser.add_argument('--compare', action='store_true',
-                       help='Показать сравнение таблиц без выполнения')
+                       help='Show table comparison without execution')
 
     args = parser.parse_args()
 
-    # Показать сравнение таблиц если запрошено
+    # Show table comparison if requested
     if args.compare:
         print_table_comparison()
         return
 
-    # Выбор таблицы
+    # Table selection
     if args.table == 1:
         table_data = TABLE_1
-        print(f"\n{COLOR_GREEN}Выбрана ТАБЛИЦА 1{COLOR_RESET}")
+        print(f"\n{COLOR_GREEN}Selected TABLE 1{COLOR_RESET}")
     else:
         table_data = TABLE_2
-        print(f"\n{COLOR_GREEN}Выбрана ТАБЛИЦА 2{COLOR_RESET}")
+        print(f"\n{COLOR_GREEN}Selected TABLE 2{COLOR_RESET}")
 
-    # Настройка логирования
+    # Logging setup
     blf_output = args.blf_file
     if args.blf and blf_output is None:
         blf_output = generate_blf_filename(args.table)
-        print(f"{COLOR_WHITE}BLF файл: {blf_output}{COLOR_RESET}")
+        print(f"{COLOR_WHITE}BLF file: {blf_output}{COLOR_RESET}")
 
-    # Создание контроллера и запуск
+    # Create controller and run
     controller = ValveController(
         use_virtual=args.virtual,
         channel=args.channel,
@@ -454,10 +464,10 @@ def main():
         blf_output=blf_output
     )
 
-    # Показать краткое сравнение перед запуском
+    # Show brief comparison before execution
     print_table_comparison()
 
-    # Запуск выбранной таблицы
+    # Run selected table
     controller.run_table_sequence(table_data)
 
 if __name__ == "__main__":
