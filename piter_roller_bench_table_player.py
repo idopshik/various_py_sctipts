@@ -1,634 +1,522 @@
-
 """
-CAN Bus Valve Control Replay Script
-====================================
+CAN Valve Control Sequence Player - TABLE SELECTOR VERSION
+=========================================================
+Plays ESC valve testing sequence according to table 1 or 2.
+Tables are presented in a maximally readable format with full descriptions.
 
-НАЗНАЧЕНИЕ:
-Скрипт воспроизводит CAN-сообщения из BLF-файла для управления клапанами
-гидроблока ABS/ESC. Отправляет только сообщения 0x740 и ожидает ответы 0x760.
-
-КЛЮЧЕВАЯ ФУНКЦИЯ - REPLACE_CMD:
-При REPLACE_CMD = True скрипт модифицирует команды управления клапанами (4B12),
-отключая изолирующие и питающие клапаны НЕАКТИВНОЙ диагонали.
-
-Диагонали тормозной системы:
-  - FL-RR (Front Left - Rear Right): изоляция 0xA (биты 1,3)
-  - FR-RL (Front Right - Rear Left): изоляция 0x5 (биты 0,2)
-
-Последовательность колёс: FL → FR → RL → RR
-Переключение на следующее колесо происходит при обнаружении команды
-на выпускной клапан текущего колеса.
-
-Выпускные клапаны (в valve byte, data[5]):
-  - FL: бит 1 (0x02)
-  - FR: бит 3 (0x08)
-  - RL: бит 5 (0x20)
-  - RR: бит 7 (0x80)
-
-ФОРМАТ КОМАНДЫ 4B12:
-06 2F 4B 12 03 XX YY 00
-  - XX (data[5]): управление клапанами (впускные/выпускные)
-  - YY (data[6]): изоляция/питание, младший ниббл модифицируется
-
-ЦВЕТОВОЕ КОДИРОВАНИЕ:
-  - Белый: обычные команды
-  - Жёлтый: Tester Present (3E/7E) и Extended Session (10 03)
-  - Зелёный: положительные ответы
-  - Красный: Negative Response и таймауты
-  - Cyan: модифицированные команды и переключение колёс
-
-ИСПОЛЬЗОВАНИЕ:
-  python replay_740_760.py              # реальный Kvaser адаптер
-  python replay_740_760.py --virtual    # виртуальный канал (для теста)
-  python replay_740_760.py -v           # короткий флаг
-
-КОНФИГУРАЦИЯ:
-  - blf_file_path: путь к BLF файлу
-  - channel: номер канала Kvaser (0 = первый)
-  - bitrate: скорость CAN (по умолчанию 500000)
-  - timeout: таймаут ожидания ответа
-  - REPLACE_CMD: True для модификации команд, False для оригинальных
-
-ТРЕБОВАНИЯ:
-  - python-can
-  - canlib (Kvaser CANlib SDK)
-  - tqdm (прогресс-бар)
-  - pandas (для XLSX файлов)
-
-ИЗВЕСТНЫЕ БАГИ:
-    Так и не проигрывает логи из автоваза. Так и не нашёл я баг. Но это и не потребовалось.
-    Понятия не имею, почему. вроде смотрел логи, вроде там норм. И симулятор вроде отвечал успешно. А реальный лог не отвечает
+CYCLE MODE: Use --cycle to repeat table infinitely with pause between cycles.
 """
 
 import can
 import time
 import argparse
-import re
-import pandas as pd
-from tqdm import tqdm
-from pathlib import Path
+import os
 from datetime import datetime
-from canlib import canlib
+from tqdm import tqdm
 
-# ANSI цветовые коды
+# ANSI color codes
 COLOR_RED = "\033[91m"
 COLOR_GREEN = "\033[92m"
 COLOR_YELLOW = "\033[93m"
 COLOR_WHITE = "\033[97m"
 COLOR_CYAN = "\033[96m"
+COLOR_BLUE = "\033[94m"
+COLOR_MAGENTA = "\033[95m"
 COLOR_RESET = "\033[0m"
 
-# Флаг для подмены команд - выключение неактивной диагонали
-REPLACE_CMD = True
+# Time intervals (in seconds)
+T1 = 0.140  # base timeout
+T2 = 0.070  # fast sequence (cycles)
+T3 = 0.250  # diagonal change
+T4 = 0.400  # pauses between stages
+T5 = 2.000  # very long pauses (depressurization)
 
-#  BLF_FILE_PATH = "./log_to_replay/XTAGA0000T0014007.xlsx"
-BLF_FILE_PATH = "/home/st/tmptmp/Roller_bench_12025_11_18_13_25_30_xjo_dynamic_OK.blf"
+# Default cycle pause
+DEFAULT_CYCLE_PAUSE = 15  # seconds
+
+# ============================================================================
+# TABLE 1 - FULL TABLE (Both diagonals working simultaneously)
+# ============================================================================
+TABLE_1 = {
+    "name": "Table 1 - Both diagonals simultaneously",
+    "description": "Testing with all valves of each diagonal enabled simultaneously",
+    "sequence": [
+        # === INITIALIZATION ===
+        {"data": [0x02, 0x10, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00], "time": T1, "desc": "Extended Session"},
+        {"data": [0x04, 0x14, 0xFF, 0xFF, 0xFF, 0x00, 0x00, 0x00], "time": T1, "desc": "Security Access"},
+        {"data": [0x02, 0x10, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00], "time": T1, "desc": "Repeat Extended Session"},
+        {"data": [0x02, 0x3E, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00], "time": T4, "desc": "Tester Present"},
+        {"data": [0x02, 0x3E, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00], "time": T4, "desc": "Tester Present"},
+        {"data": [0x02, 0x3E, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00], "time": T4, "desc": "Tester Present"},
+
+        # === MAIN SEQUENCE OF TABLE 1 ===
+        # Step 1-2: Initialization
+        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x00, 0x00, 0x00], "time": T1, "desc": "1. All off"},
+        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x00, 0x40, 0x00], "time": T1, "desc": "2. Pump motor on"},
+        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x05, 0x40, 0x00], "time": T1, "desc": "3. Inlet valves front axle on"},
+        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x55, 0x40, 0x00], "time": T1, "desc": "4. Inlet valves rear axle on"},
+        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x55, 0x43, 0x00], "time": T1, "desc": "5. USV1 and USV2 on (ISO_1 FR_RL and ISO_2 FL_RR)"},
+        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x55, 0x4F, 0x00], "time": T1, "desc": "6. HSV1 and HSV2 on (SHU_1 FR_RL and SHU_2 FL_RR)"},
+
+        # FL wheel (Front Left) - diagonal FL_RR
+        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x54, 0x4F, 0x00], "time": T4, "desc": "7. EVFL off"},
+        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x55, 0x4F, 0x00], "time": T1, "desc": "8. EVFL on"},
+
+        # CYCLE FL: 5 on/off cycles
+        {"repeat": 5, "on": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x55, 0x4F, 0x00], "off": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x54, 0x4F, 0x00], "time": T2, "desc": "FL cycle"},
+
+        # Switch to FR
+        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x55, 0x43, 0x00], "time": T1, "desc": "11. HSV1 and HSV2 off"},
+        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x57, 0x43, 0x00], "time": T3, "desc": "12. AVFL on"},
+        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x55, 0x43, 0x00], "time": T4, "desc": "13. AVFL off"},
+        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x55, 0x4F, 0x00], "time": T1, "desc": "14. HSV1 and HSV2 on"},
+
+        # FR wheel (Front Right) - diagonal FR_RL
+        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x51, 0x4F, 0x00], "time": T4, "desc": "15. EVFR off"},
+        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x55, 0x4F, 0x00], "time": T1, "desc": "16. EVFR on"},
+
+        # CYCLE FR: 5 on/off cycles
+        {"repeat": 5, "on": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x55, 0x4F, 0x00], "off": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x51, 0x4F, 0x00], "time": T2, "desc": "FR cycle"},
+
+        # Switch to RL
+        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x55, 0x43, 0x00], "time": T4, "desc": "19. HSV1 and HSV2 off"},
+        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x5D, 0x43, 0x00], "time": T3, "desc": "20. AVFR on"},
+        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x55, 0x43, 0x00], "time": T4, "desc": "21. AVFR off"},
+        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x55, 0x4F, 0x00], "time": T1, "desc": "22. HSV1 and HSV2 on"},
+
+        # RL wheel (Rear Left) - diagonal FR_RL
+        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x45, 0x4F, 0x00], "time": T4, "desc": "23. EVRL off"},
+        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x55, 0x4F, 0x00], "time": T1, "desc": "24. EVRL on"},
+
+        # CYCLE RL: 5 on/off cycles
+        {"repeat": 5, "on": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x55, 0x4F, 0x00], "off": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x45, 0x4F, 0x00], "time": T2, "desc": "RL cycle"},
+
+        # Switch to RR
+        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x55, 0x43, 0x00], "time": T4, "desc": "27. HSV1 and HSV2 off"},
+        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x75, 0x43, 0x00], "time": T3, "desc": "28. AVRL on"},
+        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x55, 0x43, 0x00], "time": T3, "desc": "29. AVRL off"},
+        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x55, 0x4F, 0x00], "time": T4, "desc": "30. HSV1 and HSV2 on"},
+
+        # RR wheel (Rear Right) - diagonal FL_RR
+        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x15, 0x4F, 0x00], "time": T1, "desc": "31. EVRR off (T1)"},
+        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x55, 0x4F, 0x00], "time": T4, "desc": "32. EVRR on"},
+
+        # CYCLE RR: 5 on/off cycles
+        {"repeat": 5, "on": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x55, 0x4F, 0x00], "off": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x15, 0x4F, 0x00], "time": T2, "desc": "RR cycle"},
+
+        # Finalization
+        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x55, 0x43, 0x00], "time": T4, "desc": "35. HSV1 and HSV2 off"},
+        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0xD5, 0x43, 0x00], "time": T3, "desc": "36. AVRR on"},
+        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x55, 0x43, 0x00], "time": T4, "desc": "37. AVRR off"},
+        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x55, 0x40, 0x00], "time": T1, "desc": "38. USV1 and USV2 off"},
+        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x50, 0x40, 0x00], "time": T1, "desc": "39. Inlet valves front axle off"},
+        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x00, 0x40, 0x00], "time": T1, "desc": "40. Inlet valves rear axle off"},
+        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x00, 0x40, 0x00], "time": T5, "desc": "41. All valves off (depressurization)"},
+        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x00, 0x00, 0x00], "time": 0.1, "desc": "42. Pump motor off"},
+    ]
+}
+
+# ============================================================================
+# TABLE 2 - SEPARATE TABLE (Alternating diagonal work)
+# ============================================================================
+TABLE_2 = {
+    "name": "Table 2 - Separately by diagonals",
+    "description": "Testing with separate control of valves on diagonals FR_RL and FL_RR",
+    "sequence": [
+        # === INITIALIZATION ===
+        {"data": [0x02, 0x10, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00], "time": T1, "desc": "Extended Session"},
+        {"data": [0x04, 0x14, 0xFF, 0xFF, 0xFF, 0x00, 0x00, 0x00], "time": T1, "desc": "Security Access"},
+        {"data": [0x02, 0x10, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00], "time": T1, "desc": "Repeat Extended Session"},
+        {"data": [0x02, 0x3E, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00], "time": T4, "desc": "Tester Present"},
+        {"data": [0x02, 0x3E, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00], "time": T4, "desc": "Tester Present"},
+        {"data": [0x02, 0x3E, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00], "time": T4, "desc": "Tester Present"},
+
+        # === MAIN SEQUENCE OF TABLE 2 ===
+        # Step 1-2: Initialization
+        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x00, 0x00, 0x00], "time": T1, "desc": "1. All off"},
+        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x00, 0x40, 0x00], "time": T1, "desc": "2. Pump motor on"},
+        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x05, 0x40, 0x00], "time": T1, "desc": "3. Inlet valves front axle on"},
+        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x55, 0x40, 0x00], "time": T1, "desc": "4. Inlet valves rear axle on"},
+        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x55, 0x42, 0x00], "time": T1, "desc": "5. USV2 on (ISO_2 - diagonal FL_RR)"},
+        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x55, 0x4A, 0x00], "time": T1, "desc": "6. HSV2 on (SHU_2 - diagonal FL_RR)"},
+
+        # FL wheel (Front Left) - diagonal FL_RR active
+        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x54, 0x4A, 0x00], "time": T4, "desc": "7. EVFL off"},
+        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x55, 0x4A, 0x00], "time": T1, "desc": "8. EVFL on"},
+
+        # CYCLE FL: 5 on/off cycles
+        {"repeat": 5, "on": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x55, 0x4A, 0x00], "off": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x54, 0x4A, 0x00], "time": T2, "desc": "FL cycle"},
+
+        # Switch to FR (CHANGE DIAGONAL: FL_RR → FR_RL)
+        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x55, 0x42, 0x00], "time": T1, "desc": "11. HSV2 off (SHU_2)"},
+        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x57, 0x41, 0x00], "time": T3, "desc": "12. AVFL on, USV1 on, USV2 off"},
+        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x55, 0x41, 0x00], "time": T4, "desc": "13. AVFL off"},
+        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x55, 0x45, 0x00], "time": T1, "desc": "14. HSV1 on (SHU_1 - diagonal FR_RL)"},
+
+        # FR wheel (Front Right) - diagonal FR_RL active
+        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x51, 0x45, 0x00], "time": T4, "desc": "15. EVFR off"},
+        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x55, 0x45, 0x00], "time": T1, "desc": "16. EVFR on"},
+
+        # CYCLE FR: 5 on/off cycles
+        {"repeat": 5, "on": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x55, 0x45, 0x00], "off": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x51, 0x45, 0x00], "time": T2, "desc": "FR cycle"},
+
+        # Switch to RL (STAY ON DIAGONAL FR_RL)
+        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x55, 0x41, 0x00], "time": T4, "desc": "19. HSV1 off (SHU_1)"},
+        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x5D, 0x41, 0x00], "time": T3, "desc": "20. AVFR on"},
+        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x55, 0x41, 0x00], "time": T4, "desc": "21. AVFR off"},
+        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x55, 0x45, 0x00], "time": T1, "desc": "22. HSV1 on (SHU_1)"},
+
+        # RL wheel (Rear Left) - diagonal FR_RL active
+        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x45, 0x45, 0x00], "time": T4, "desc": "23. EVRL off"},
+        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x55, 0x45, 0x00], "time": T1, "desc": "24. EVRL on"},
+
+        # CYCLE RL: 5 on/off cycles
+        {"repeat": 5, "on": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x55, 0x45, 0x00], "off": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x45, 0x45, 0x00], "time": T2, "desc": "RL cycle"},
+
+        # Switch to RR (CHANGE DIAGONAL: FR_RL → FL_RR)
+        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x55, 0x41, 0x00], "time": T4, "desc": "27. HSV1 off (SHU_1)"},
+        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x75, 0x42, 0x00], "time": T3, "desc": "28. AVRL on, USV2 on, USV1 off"},
+        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x55, 0x42, 0x00], "time": T3, "desc": "29. AVRL off"},
+        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x55, 0x4A, 0x00], "time": T4, "desc": "30. HSV2 on (SHU_2 - diagonal FL_RR)"},
+
+        # RR wheel (Rear Right) - diagonal FL_RR active
+        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x15, 0x4A, 0x00], "time": T1, "desc": "31. EVRR off (T1)"},
+        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x55, 0x4A, 0x00], "time": T4, "desc": "32. EVRR on"},
+
+        # CYCLE RR: 5 on/off cycles
+        {"repeat": 5, "on": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x55, 0x4A, 0x00], "off": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x15, 0x4A, 0x00], "time": T2, "desc": "RR cycle"},
+
+        # Finalization
+        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x55, 0x42, 0x00], "time": T4, "desc": "35. HSV2 off (SHU_2)"},
+        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0xD5, 0x42, 0x00], "time": T3, "desc": "36. AVRR on"},
+        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x55, 0x42, 0x00], "time": T4, "desc": "37. AVRR off"},
+        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x55, 0x40, 0x00], "time": T1, "desc": "38. USV2 off"},
+        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x50, 0x40, 0x00], "time": T1, "desc": "39. Inlet valves front axle off"},
+        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x00, 0x40, 0x00], "time": T1, "desc": "40. Inlet valves rear axle off"},
+        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x00, 0x40, 0x00], "time": T5, "desc": "41. All valves off (depressurization)"},
+        {"data": [0x06, 0x2F, 0x4B, 0x12, 0x03, 0x00, 0x00, 0x00], "time": 0.1, "desc": "42. Pump motor off"},
+    ]
+}
 
 
+class ValveController:
+    def __init__(self, use_virtual=True, channel=0, bitrate=500000, blf_prefix=None):
+        self.use_virtual = use_virtual
+        self.channel = channel
+        self.bitrate = bitrate
+        self.blf_prefix = blf_prefix
+        self.bus = None
+        self.logger = None
+        self.current_wheel = "FL"
+        self.current_diagonal = "FL_RR"
 
-
-def check_kvaser_hardware():
-    """Проверяет наличие реального Kvaser адаптера через CANlib"""
-    try:
-        num_channels = canlib.getNumberOfChannels()
-
-        for ch in range(num_channels):
-            chd = canlib.ChannelData(ch)
-            if "Virtual" not in chd.channel_name:
-                return True, f"{chd.channel_name} (SN: {chd.card_serial_no}, ch {chd.chan_no_on_card})"
-
-        return False, "Only virtual channels found"
-    except canlib.exceptions.CanGeneralError as e:
-        return False, str(e)
-    except Exception as e:
-        return False, str(e)
-
-def parse_xlsx_file(file_path):
-    """
-    Парсит XLSX файл нового завода и возвращает список CAN сообщений.
-
-    Формат XLSX нового завода:
-    № п/п | Date       | Time         | Type | Level | Event
-    """
-    try:
-        # Читаем Excel файл
-        df = pd.read_excel(file_path)
-        print(f"{COLOR_WHITE}XLSX файл загружен. Строк: {len(df)}{COLOR_RESET}")
-        print(f"{COLOR_WHITE}Колонки: {df.columns.tolist()}{COLOR_RESET}")
-
-        # Проверяем наличие обязательных колонок
-        required_columns = ['№ п/п', 'Date', 'Time', 'Type', 'Level', 'Event']
-        missing_columns = [col for col in required_columns if col not in df.columns]
-
-        if missing_columns:
-            print(f"{COLOR_RED}ОШИБКА: В файле отсутствуют обязательные колонки: {missing_columns}{COLOR_RESET}")
-            return []
-
-        # Фильтруем только CAN сообщения
-        df_can = df[df['Type'] == 'Can'].copy()
-        print(f"{COLOR_WHITE}Найдено CAN сообщений: {len(df_can)}{COLOR_RESET}")
-
-        if len(df_can) == 0:
-            print(f"{COLOR_RED}ОШИБКА: В файле нет CAN сообщений (Type='Can'){COLOR_RESET}")
-            return []
-
-        messages = []
-        base_timestamp = None
-
-        # Функция для парсинга времени
-        def parse_timestamp(date_str, time_str):
-            try:
-                # Объединяем дату и время
-                datetime_str = f"{date_str} {time_str}"
-                # Парсим в datetime объект
-                dt = datetime.strptime(datetime_str, "%d.%m.%Y %H:%M:%S.%f")
-                return dt.timestamp()
-            except ValueError:
-                try:
-                    dt = datetime.strptime(datetime_str, "%d.%m.%Y %H:%M:%S")
-                    return dt.timestamp()
-                except Exception as e:
-                    print(f"{COLOR_RED}Ошибка парсинга времени '{datetime_str}': {e}{COLOR_RESET}")
-                    return None
-
-        # Функция для парсинга CAN события
-        def parse_can_event(event_str):
-            pattern = r'\[(0x[0-9a-fA-F]+)\]\s*\((\d+)\)\s*(->|<-)\s*(.+)'
-            match = re.search(pattern, event_str)
-
-            if match:
-                can_id = match.group(1)  # 0x740 или 0x760
-                dlc = int(match.group(2))
-                direction = match.group(3)  # -> или <-
-                data_hex = match.group(4)   # HEX данные
-
-                # Конвертируем CAN ID
-                try:
-                    arbitration_id = int(can_id, 16)
-                except:
-                    print(f"{COLOR_RED}Ошибка парсинга CAN ID: {can_id}{COLOR_RESET}")
-                    return None, None, None
-
-                # Конвертируем HEX данные в байты
-                try:
-                    hex_bytes = data_hex.split()
-                    data_bytes = bytes(int(byte, 16) for byte in hex_bytes)
-
-                    if len(data_bytes) != dlc:
-                        print(f"{COLOR_YELLOW}Предупреждение: DLC ({dlc}) не соответствует длине данных ({len(data_bytes)}){COLOR_RESET}")
-
-                    return arbitration_id, data_bytes, direction
-                except Exception as e:
-                    print(f"{COLOR_RED}Ошибка парсинга данных: {data_hex} - {e}{COLOR_RESET}")
-                    return None, None, None
-
-            return None, None, None
-
-        # Обрабатываем каждую CAN строку
-        valid_messages = 0
-        for idx, row in df_can.iterrows():
-            try:
-                # Парсим время
-                timestamp = parse_timestamp(row['Date'], row['Time'])
-                if timestamp is None:
-                    continue
-
-                # Устанавливаем базовое время
-                if base_timestamp is None:
-                    base_timestamp = timestamp
-
-                # Парсим CAN событие
-                arbitration_id, data, direction = parse_can_event(str(row['Event']))
-                if arbitration_id is None:
-                    continue
-
-                # Создаем CAN сообщение
-                # Временная метка относительно начала файла
-                relative_timestamp = timestamp - base_timestamp
-
-                msg = can.Message(
-                    arbitration_id=arbitration_id,
-                    data=data,
-                    timestamp=relative_timestamp,
-                    is_rx=(direction == '<-')
+    def connect(self):
+        """Connect to CAN bus"""
+        try:
+            if self.use_virtual:
+                print(f"{COLOR_WHITE}Connecting to VIRTUAL channel {self.channel}...{COLOR_RESET}")
+                self.bus = can.Bus(
+                    interface='virtual',
+                    channel=self.channel,
+                    receive_own_messages=True
                 )
+            else:
+                print(f"{COLOR_WHITE}Connecting to Kvaser channel {self.channel}...{COLOR_RESET}")
 
-                messages.append(msg)
-                valid_messages += 1
+                try:
+                    from can.interfaces import kvaser
+                    available_channels = kvaser.detect_available_configs()
+                    print(f"{COLOR_YELLOW}Available Kvaser channels: {available_channels}{COLOR_RESET}")
+                except Exception as e:
+                    print(f"{COLOR_RED}Error detecting Kvaser: {e}{COLOR_RESET}")
 
-                # Выводим первые несколько сообщений для отладки
-                if valid_messages <= 3:
-                    data_hex = ' '.join([f'{b:02X}' for b in data])
-                    print(f"{COLOR_WHITE}DEBUG: CAN ID: 0x{arbitration_id:03X}, Data: {data_hex}, Time: {relative_timestamp:.3f}s{COLOR_RESET}")
-
-            except Exception as e:
-                print(f"{COLOR_RED}Ошибка обработки строки {idx}: {e}{COLOR_RESET}")
-                continue
-
-        print(f"{COLOR_GREEN}Успешно обработано CAN сообщений: {valid_messages}{COLOR_RESET}")
-
-        # Фильтруем только сообщения 0x740 для проигрывания
-        messages_740 = [msg for msg in messages if msg.arbitration_id == 0x740 and not msg.is_rx]
-        print(f"{COLOR_GREEN}Сообщений 0x740 для проигрывания: {len(messages_740)}{COLOR_RESET}")
-
-        if len(messages_740) == 0:
-            print(f"{COLOR_RED}ОШИБКА: В файле нет исходящих сообщений 0x740{COLOR_RESET}")
-            return []
-
-        return messages_740
-
-    except Exception as e:
-        print(f"{COLOR_RED}Ошибка чтения XLSX файла: {e}{COLOR_RESET}")
-        return []
-
-def modify_valve_command(data):
-    """
-    Модифицирует команду управления клапанами 4B12.
-    Поддерживает оба формата: 8-байтный (BLF) и 6-байтный (XLSX).
-    """
-    # Проверяем что это команда 4B12 для обоих форматов
-    is_8byte_format = len(data) >= 7 and data[1] == 0x2F and data[2] == 0x4B and data[3] == 0x12
-    is_6byte_format = len(data) >= 6 and data[0] == 0x2F and data[1] == 0x4B and data[2] == 0x12
-
-    if not (is_8byte_format or is_6byte_format):
-        return data
-
-    # Определяем индексы в зависимости от формата
-    if is_8byte_format:
-        # 8-байтный формат: 06 2F 4B 12 03 XX YY 00
-        valve_index = 5  # XX - управление клапанами
-        iso_index = 6    # YY - изоляция
-    else:
-        # 6-байтный формат: 2F 4B 12 03 XX YY
-        valve_index = 4  # XX - управление клапанами
-        iso_index = 5    # YY - изоляция
-
-    iso_byte = data[iso_index]
-    current_wheel = modify_valve_command.current_wheel
-
-    # Модифицируем только младший ниббл байта изоляции
-    iso_low_nibble = iso_byte & 0x0F
-    iso_high_nibble = iso_byte & 0xF0
-
-    # Определяем диагональ по текущему колесу
-    if current_wheel in ["FL", "RR"]:
-        # Диагональ FL-RR (0xA), выключаем FR-RL (0x5)
-        iso_low_nibble &= ~0x05  # clear bits 0 and 2
-    else:  # FR, RL
-        # Диагональ FR-RL (0x5), выключаем FL-RR (0xA)
-        iso_low_nibble &= ~0x0A  # clear bits 1 and 3
-
-    new_iso_byte = iso_high_nibble | iso_low_nibble
-
-    # Создаём новый массив данных
-    new_data = bytearray(data)
-    new_data[iso_index] = new_iso_byte
-
-    return bytes(new_data)
-
-# Инициализация state machine
-modify_valve_command.current_wheel = "FL"
-
-def check_outlet_and_switch(data):
-    """
-    Проверяет выпускной клапан и переключает на следующее колесо.
-    Поддерживает оба формата: 8-байтный (BLF) и 6-байтный (XLSX).
-    """
-    # Проверяем что это команда 4B12 для обоих форматов
-    is_8byte_format = len(data) >= 7 and data[1] == 0x2F and data[2] == 0x4B and data[3] == 0x12
-    is_6byte_format = len(data) >= 6 and data[0] == 0x2F and data[1] == 0x4B and data[2] == 0x12
-
-    if not (is_8byte_format or is_6byte_format):
-        return False
-
-    # Определяем индекс байта клапанов в зависимости от формата
-    if is_8byte_format:
-        # 8-байтный формат: 06 2F 4B 12 03 XX YY 00
-        valve_index = 5  # XX - управление клапанами
-    else:
-        # 6-байтный формат: 2F 4B 12 03 XX YY
-        valve_index = 4  # XX - управление клапанами
-
-    valve_byte = data[valve_index]
-    current = modify_valve_command.current_wheel
-
-    # Маски выпускных клапанов
-    outlet_masks = {
-        "FL": 0x02,  # бит 1
-        "FR": 0x08,  # бит 3
-        "RL": 0x20,  # бит 5
-        "RR": 0x80   # бит 7
-    }
-
-    # Последовательность переключения
-    next_wheel = {
-        "FL": "FR",
-        "FR": "RL",
-        "RL": "RR",
-        "RR": None  # конец
-    }
-
-    # Проверяем выпускной текущего колеса
-    if valve_byte & outlet_masks[current]:
-        next_w = next_wheel[current]
-        if next_w:
-            print(f"{COLOR_CYAN}>>> Switching from {current} to {next_w}{COLOR_RESET}")
-            modify_valve_command.current_wheel = next_w
-            return True
-        else:
-            print(f"{COLOR_CYAN}>>> Finished sequence at {current}{COLOR_RESET}")
-            return True
-
-    return False
-
-def get_message_type(data):
-    """Определяет тип сообщения по данным"""
-    if len(data) >= 2:
-        # Tester Present
-        if data[0] == 0x02 and data[1] == 0x3E:
-            return "tester_present"
-        # Tester Present Response
-        if data[0] == 0x02 and data[1] == 0x7E:
-            return "tester_present_response"
-        # Extended Session Request (проверяем оба формата)
-        if (len(data) >= 3 and data[1] == 0x10 and data[2] == 0x03) or \
-           (len(data) >= 2 and data[0] == 0x10 and data[1] == 0x03):
-            return "extended_session"
-        # Extended Session Response
-        if len(data) >= 3 and data[1] == 0x50 and data[2] == 0x03:
-            return "extended_session_response"
-        # Negative Response
-        if data[0] >= 0x03 and data[1] == 0x7F:
-            return "negative_response"
-    return "other"
-
-def get_color_for_message(msg_type, is_response=False):
-    """Возвращает цвет для сообщения"""
-    if msg_type == "negative_response":
-        return COLOR_RED
-    elif msg_type in ["tester_present", "tester_present_response",
-                      "extended_session", "extended_session_response"]:
-        return COLOR_YELLOW
-    elif is_response:
-        return COLOR_GREEN
-    else:
-        return COLOR_WHITE
-
-def format_message(msg, color):
-    """Форматирует сообщение для вывода"""
-    data_hex = ' '.join([f'{b:02X}' for b in msg.data])
-    direction = "Rx" if msg.is_rx else "Tx"
-    return f"{color}{msg.timestamp:12.6f} {msg.channel}  {msg.arbitration_id:03X}       {direction}   d {len(msg.data)} {data_hex}{COLOR_RESET}"
-
-def read_can_messages(file_path):
-    """
-    Читает CAN сообщения из файла.
-    Поддерживает BLF и XLSX форматы.
-    """
-    file_ext = Path(file_path).suffix.lower()
-
-    if file_ext in ['.blf']:
-        # Старый функционал для BLF файлов
-        messages = []
-        with can.BLFReader(file_path) as log:
-            for msg in log:
-                if msg.arbitration_id == 0x740:
-                    messages.append(msg)
-        return messages
-
-    elif file_ext in ['.xlsx', '.xls']:
-        # Новый функционал для XLSX файлов нового завода
-        return parse_xlsx_file(file_path)
-
-    else:
-        print(f"{COLOR_RED}Неподдерживаемый формат файла: {file_ext}{COLOR_RESET}")
-        print(f"{COLOR_YELLOW}Поддерживаемые форматы: .blf, .xlsx, .xls{COLOR_RESET}")
-        return []
-
-def create_can_bus(use_virtual=False, channel=0, bitrate=500000):
-    """Create CAN bus with comprehensive error handling"""
-    bus = None
-
-    try:
-        if use_virtual:
-            print(f"{COLOR_WHITE}Попытка подключения к VIRTUAL каналу {channel}...{COLOR_RESET}")
-            bus = can.Bus(
-                interface='kvaser',
-                channel=channel,
-                bitrate=bitrate,
-                accept_virtual=True,
-                receive_own_messages=False,
-                fd=False,  # Disable CAN-FD
-                data_bitrate=bitrate,
-                sjw=1
-            )
-        else:
-            print(f"{COLOR_WHITE}Попытка подключения к физическому каналу {channel}...{COLOR_RESET}")
-            bus = can.Bus(
-                interface='kvaser',
-                channel=channel,
-                bitrate=bitrate,
-                receive_own_messages=False,
-                fd=False,  # Disable CAN-FD
-                data_bitrate=bitrate
-            )
-
-    except Exception as e:
-        print(f"{COLOR_RED}Ошибка Kvaser инициализации: {e}{COLOR_RESET}")
-
-        # Fallback to virtual if hardware fails
-        if not use_virtual:
-            print(f"{COLOR_YELLOW}Попытка использовать виртуальный канал...{COLOR_RESET}")
-            try:
-                bus = can.Bus(
+                self.bus = can.Bus(
                     interface='kvaser',
-                    channel=channel,
-                    bitrate=bitrate,
-                    accept_virtual=True,
-                    receive_own_messages=False
+                    channel=self.channel,
+                    bitrate=self.bitrate,
+                    accept_virtual=True
                 )
-                print(f"{COLOR_GREEN}Успешно подключен к виртуальному каналу{COLOR_RESET}")
-            except Exception as e2:
-                print(f"{COLOR_RED}Виртуальный канал также не доступен: {e2}{COLOR_RESET}")
 
-    return bus
+            print(f"{COLOR_GREEN}Successfully connected to CAN bus{COLOR_RESET}")
+            return True
 
-def replay_740_760(use_virtual=False):
-    """Проигрывание только сообщений 0x740 с ожиданием ответов 0x760"""
+        except Exception as e:
+            print(f"{COLOR_RED}Connection error: {e}{COLOR_RESET}")
+            return False
 
-    # Конфигурация
-    blf_file_path = BLF_FILE_PATH
-    channel = 0  # Kvaser channel 0 (первый канал)
-    bitrate = 500000
-    timeout = 0.1
+    def disconnect(self):
+        """Disconnect from CAN bus and close logger"""
+        if self.logger:
+            self.logger.stop()
+            self.logger = None
 
-    if not Path(blf_file_path).exists():
-        print(f"{COLOR_RED}Файл {blf_file_path} не найден!{COLOR_RESET}")
-        return
+        if self.bus:
+            self.bus.shutdown()
+            self.bus = None
 
-    # Проверка наличия реального адаптера если не используем виртуальный
-    if not use_virtual:
-        hw_present, hw_info = check_kvaser_hardware()
-        if not hw_present:
-            print(f"{COLOR_RED}Please connect Kvaser adapter!{COLOR_RESET}")
-            print(f"{COLOR_YELLOW}Use --virtual flag to use virtual channel{COLOR_RESET}")
-            return
-        print(f"{COLOR_GREEN}Found Kvaser: {hw_info}{COLOR_RESET}")
+    def start_new_log(self, table_num, cycle_num=None):
+        """Start new BLF log file"""
+        if self.logger:
+            self.logger.stop()
+            self.logger = None
 
-    try:
-        # Чтение и фильтрация сообщений 0x740 из файла
-        print(f"{COLOR_WHITE}Чтение файла {Path(blf_file_path).name}...{COLOR_RESET}")
-        requests_740 = read_can_messages(blf_file_path)
+        if self.blf_prefix:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            if cycle_num is not None:
+                filename = f"{self.blf_prefix}_table{table_num}_cycle{cycle_num:04d}_{timestamp}.blf"
+            else:
+                filename = f"{self.blf_prefix}_table{table_num}_{timestamp}.blf"
 
-        if not requests_740:
-            print(f"{COLOR_RED}Нет сообщений 0x740 в файле{COLOR_RESET}")
-            return
+            os.makedirs(os.path.dirname(filename) if os.path.dirname(filename) else '.', exist_ok=True)
+            self.logger = can.BLFWriter(filename)
+            print(f"{COLOR_GREEN}Logging to: {filename}{COLOR_RESET}")
+            return filename
+        return None
 
-        total_requests = len(requests_740)
-        print(f"{COLOR_WHITE}Найдено запросов 0x740: {total_requests}{COLOR_RESET}")
+    def log_message(self, msg):
+        """Log message"""
+        if self.logger:
+            self.logger.on_message_received(msg)
 
-        # Подключение к CAN-шине
+    def send_command(self, data, description="", stage_time=T1):
+        """Send command with stage time delay"""
+        if not self.bus:
+            print(f"{COLOR_RED}CAN bus not connected!{COLOR_RESET}")
+            return False
 
-        bus = create_can_bus(use_virtual=use_virtual, channel=channel, bitrate=bitrate)
+        try:
+            stage_start = time.time()
 
-        if bus is None:
-            print(f"{COLOR_RED}Не удалось инициализировать CAN шину{COLOR_RESET}")
-            return
+            tx_msg = can.Message(
+                arbitration_id=0x740,
+                data=data,
+                is_extended_id=False,
+                timestamp=time.time()
+            )
 
-        with bus:
-            print(f"{COLOR_YELLOW}Проигрывание только 0x740 -> 0x760{COLOR_RESET}")
-            if REPLACE_CMD:
-                modify_valve_command.current_wheel = "FL"  # Reset state
-                print(f"{COLOR_CYAN}>>> Starting with wheel: FL (sequence: FL -> FR -> RL -> RR){COLOR_RESET}")
-            print(f"{COLOR_WHITE}Нажмите Ctrl+C для остановки{COLOR_RESET}")
+            self.bus.send(tx_msg)
+            self.log_message(tx_msg)
+
+            data_hex = ' '.join([f'{b:02X}' for b in data])
+            print(f"{COLOR_WHITE}{tx_msg.timestamp:.6f} 0  740       Tx   d {len(data)} {data_hex}{COLOR_RESET}")
+
+            if description:
+                print(f"{COLOR_CYAN}# {description}{COLOR_RESET}")
+
+            elapsed = time.time() - stage_start
+            remaining = stage_time - elapsed
+            if remaining > 0:
+                time.sleep(remaining)
+
+            return True
+
+        except Exception as e:
+            print(f"{COLOR_RED}Send error: {e}{COLOR_RESET}")
+            return False
+
+    def run_sequence_once(self, table_data, show_header=True):
+        """Run table sequence once (without connect/disconnect)"""
+        if show_header:
+            print(f"\n{COLOR_YELLOW}{'='*80}{COLOR_RESET}")
+            print(f"{COLOR_YELLOW}{table_data['name']}{COLOR_RESET}")
+            print(f"{COLOR_YELLOW}{table_data['description']}{COLOR_RESET}")
+            print(f"{COLOR_YELLOW}{'='*80}{COLOR_RESET}")
+            print(f"{COLOR_WHITE}Time intervals: T1={T1}s, T2={T2}s, T3={T3}s, T4={T4}s, T5={T5}s{COLOR_RESET}")
             print()
 
-            # Прогресс-бар
-            pbar = tqdm(total=total_requests, desc="Отправка 0x740", unit="msg", ncols=100)
+        # Count total steps
+        total_steps = 0
+        for step in table_data["sequence"]:
+            if "repeat" in step:
+                total_steps += step["repeat"] * 2
+            else:
+                total_steps += 1
 
-            start_time = time.perf_counter()
-            first_timestamp = requests_740[0].timestamp
+        pbar = tqdm(total=total_steps, desc="Sending commands", unit="msg", ncols=100)
+        start_time = time.time()
 
-            success_count = 0
-            timeout_count = 0
-            error_count = 0
+        for step in table_data["sequence"]:
+            if "repeat" in step:
+                default_time = step.get("time", T2)
+                off_time = step.get("off_time", default_time)
+                on_time = step.get("on_time", default_time)
 
-            for i, msg in enumerate(requests_740):
-                try:
-                    # Выдерживаем временные интервалы из лога
-                    elapsed = msg.timestamp - first_timestamp
-                    while (time.perf_counter() - start_time) < elapsed:
-                        time.sleep(0.001)
-
-                    # Определяем тип сообщения для цветового кодирования
-                    msg_type = get_message_type(msg.data)
-                    color_req = get_color_for_message(msg_type, is_response=False)
-
-                    # Модифицируем данные если включен REPLACE_CMD
-                    tx_data = msg.data
-                    modified = False
-                    if REPLACE_CMD:
-                        # Проверяем выпускной и переключаем колесо если нужно
-                        check_outlet_and_switch(msg.data)
-                        # Модифицируем команду
-                        new_data = modify_valve_command(msg.data)
-                        if new_data != msg.data:
-                            tx_data = new_data
-                            modified = True
-
-                    # Создаем новое сообщение для отправки (без timestamp)
-                    tx_msg = can.Message(
-                        arbitration_id=msg.arbitration_id,
-                        data=tx_data,
-                        is_extended_id=msg.is_extended_id
-                    )
-
-                    # Отправляем сообщение
-                    bus.send(tx_msg)
-
-                    # Создаем сообщение для логирования с текущим временем
-                    current_ts = time.perf_counter() - start_time + first_timestamp
-                    log_msg = can.Message(
-                        arbitration_id=msg.arbitration_id,
-                        data=tx_data,
-                        timestamp=current_ts,
-                        channel=channel,
-                        is_rx=False
-                    )
-
-                    # Вывод запроса
-                    if modified:
-                        # Показываем оригинал и модификацию
-                        orig_hex = ' '.join([f'{b:02X}' for b in msg.data])
-                        print(f"{COLOR_WHITE}{current_ts:12.6f} {channel}  {msg.arbitration_id:03X}       Tx   d {len(msg.data)} {orig_hex} [ORIG]{COLOR_RESET}")
-                        print(format_message(log_msg, COLOR_CYAN) + f" {COLOR_CYAN}[MODIFIED]{COLOR_RESET}")
-                    else:
-                        print(format_message(log_msg, color_req))
-
-                    # Ожидаем ответ 0x760
-                    response = None
-                    response_received = False
-                    start_wait = time.perf_counter()
-
-                    while (time.perf_counter() - start_wait) < timeout:
-                        remaining = timeout - (time.perf_counter() - start_wait)
-                        if remaining <= 0:
-                            break
-                        response = bus.recv(timeout=remaining)
-                        if response is not None and response.arbitration_id == 0x760:
-                            response_received = True
-                            break
-
-                    if response_received and response is not None:
-                        # Определяем тип ответа
-                        resp_type = get_message_type(response.data)
-                        color_resp = get_color_for_message(resp_type, is_response=True)
-
-                        # Обновляем timestamp для вывода
-                        response.timestamp = time.perf_counter() - start_time + first_timestamp
-                        response.channel = channel
-
-                        # Вывод ответа
-                        print(format_message(response, color_resp))
-
-                        if resp_type == "negative_response":
-                            error_count += 1
-                        else:
-                            success_count += 1
-                    else:
-                        # Таймаут - ответ не получен
-                        timeout_ts = time.perf_counter() - start_time + first_timestamp
-                        print(f"{COLOR_RED}{timeout_ts:12.6f} {channel}  760       Rx   d 0 -- TIMEOUT --{COLOR_RESET}")
-                        timeout_count += 1
-
+                for i in range(step["repeat"]):
+                    self.send_command(step["off"], f"{step['desc']} - OFF ({i+1}/{step['repeat']})", off_time)
                     pbar.update(1)
-                    print()  # пустая строка между парами запрос-ответ
+                    self.send_command(step["on"], f"{step['desc']} - ON ({i+1}/{step['repeat']})", on_time)
+                    pbar.update(1)
+            else:
+                self.send_command(step["data"], step["desc"], step["time"])
+                pbar.update(1)
 
-                except KeyboardInterrupt:
-                    print(f"\n{COLOR_YELLOW}Остановлено пользователем{COLOR_RESET}")
-                    break
-                except Exception as e:
-                    print(f"{COLOR_RED}Ошибка при обработке сообщения: {e}{COLOR_RESET}")
-                    continue
+        pbar.close()
+        total_time = time.time() - start_time
+        return total_time
 
-            pbar.close()
-            print()
-            print(f"{COLOR_GREEN}{'='*60}{COLOR_RESET}")
-            print(f"{COLOR_WHITE}Воспроизведение завершено{COLOR_RESET}")
-            print(f"{COLOR_GREEN}Успешных ответов: {success_count}{COLOR_RESET}")
-            print(f"{COLOR_RED}Negative Response: {error_count}{COLOR_RESET}")
-            print(f"{COLOR_RED}Таймаутов: {timeout_count}{COLOR_RESET}")
-            print(f"{COLOR_GREEN}{'='*60}{COLOR_RESET}")
+    def run_table_sequence(self, table_data, cycle_pause=None):
+        """
+        Run table sequence.
+        If cycle_pause is set, runs infinitely with pause between cycles.
+        """
+        if not self.connect():
+            return False
 
-    except Exception as e:
-        print(f"{COLOR_RED}Критическая ошибка: {e}{COLOR_RESET}")
-        import traceback
-        traceback.print_exc()
+        table_num = 1 if "Table 1" in table_data['name'] else 2
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description='Replay CAN messages 0x740 -> 0x760')
-    parser.add_argument('--virtual', '-v', action='store_true',
-                        help='Use Kvaser virtual channel')
+        try:
+            if cycle_pause is None:
+                # Single run mode
+                self.start_new_log(table_num)
+                total_time = self.run_sequence_once(table_data, show_header=True)
+                print(f"\n{COLOR_GREEN}Table {table_data['name']} completed in {total_time:.1f} seconds!{COLOR_RESET}")
+            else:
+                # Infinite cycle mode
+                cycle_num = 1
+                total_cycles_time = 0
+
+                print(f"\n{COLOR_MAGENTA}{'='*80}{COLOR_RESET}")
+                print(f"{COLOR_MAGENTA}CYCLE MODE: Table {table_num}, pause {cycle_pause}s between cycles{COLOR_RESET}")
+                print(f"{COLOR_MAGENTA}Press Ctrl+C to stop{COLOR_RESET}")
+                print(f"{COLOR_MAGENTA}{'='*80}{COLOR_RESET}")
+
+                while True:
+                    print(f"\n{COLOR_GREEN}{'='*60}{COLOR_RESET}")
+                    print(f"{COLOR_GREEN}>>> CYCLE {cycle_num} STARTING{COLOR_RESET}")
+                    print(f"{COLOR_GREEN}{'='*60}{COLOR_RESET}")
+
+                    # New log file for each cycle
+                    self.start_new_log(table_num, cycle_num)
+
+                    cycle_time = self.run_sequence_once(table_data, show_header=(cycle_num == 1))
+                    total_cycles_time += cycle_time
+
+                    print(f"\n{COLOR_GREEN}Cycle {cycle_num} completed in {cycle_time:.1f}s (total: {total_cycles_time:.1f}s){COLOR_RESET}")
+
+                    # Pause before next cycle
+                    print(f"{COLOR_YELLOW}>>> Waiting {cycle_pause} seconds before next cycle...{COLOR_RESET}")
+                    print(f"{COLOR_YELLOW}    (Press Ctrl+C to stop){COLOR_RESET}")
+
+                    # Countdown with progress
+                    for remaining in range(int(cycle_pause), 0, -1):
+                        print(f"\r{COLOR_YELLOW}    Next cycle in: {remaining}s   {COLOR_RESET}", end='', flush=True)
+                        time.sleep(1)
+                    print()
+
+                    cycle_num += 1
+
+        except KeyboardInterrupt:
+            print(f"\n\n{COLOR_YELLOW}{'='*60}{COLOR_RESET}")
+            print(f"{COLOR_YELLOW}Stopped by user after {cycle_num if cycle_pause else 1} cycle(s){COLOR_RESET}")
+            if cycle_pause:
+                print(f"{COLOR_YELLOW}Total time: {total_cycles_time:.1f} seconds{COLOR_RESET}")
+            print(f"{COLOR_YELLOW}{'='*60}{COLOR_RESET}")
+            return False
+        except Exception as e:
+            print(f"{COLOR_RED}Execution error: {e}{COLOR_RESET}")
+            return False
+        finally:
+            self.disconnect()
+
+        return True
+
+
+def print_table_comparison():
+    """Print table comparison"""
+    print(f"\n{COLOR_MAGENTA}{'='*80}{COLOR_RESET}")
+    print(f"{COLOR_MAGENTA}ESC VALVE TESTING TABLES COMPARISON{COLOR_RESET}")
+    print(f"{COLOR_MAGENTA}{'='*80}{COLOR_RESET}")
+
+    print(f"\n{COLOR_BLUE}TABLE 1:{COLOR_RESET}")
+    print(f"  {COLOR_WHITE}• Name: {TABLE_1['name']}{COLOR_RESET}")
+    print(f"  {COLOR_WHITE}• Description: {TABLE_1['description']}{COLOR_RESET}")
+    print(f"  {COLOR_WHITE}• Features:{COLOR_RESET}")
+    print(f"    - Both diagonals work simultaneously")
+    print(f"    - All USV (isolation) and HSV (shuttle) valves are enabled at once")
+    print(f"    - Uses data: 55 43, 55 4F")
+
+    print(f"\n{COLOR_BLUE}TABLE 2:{COLOR_RESET}")
+    print(f"  {COLOR_WHITE}• Name: {TABLE_2['name']}{COLOR_RESET}")
+    print(f"  {COLOR_WHITE}• Description: {TABLE_2['description']}{COLOR_RESET}")
+    print(f"  {COLOR_WHITE}• Features:{COLOR_RESET}")
+    print(f"    - Diagonals work alternately")
+    print(f"    - USV and HSV are enabled only for active diagonal")
+    print(f"    - Uses data: 55 42, 55 4A (diagonal FL_RR) and 55 41, 55 45 (diagonal FR_RL)")
+    print(f"    - More precise isolated testing")
+
+    print(f"\n{COLOR_MAGENTA}{'='*80}{COLOR_RESET}")
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description='Valve Control Sequence Player - Table selection for testing',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Usage examples:
+  %(prog)s -t 1                     # Run table 1 once
+  %(prog)s -t 2                     # Run table 2 once
+  %(prog)s -t 1 --cycle             # Run table 1 infinitely (15s pause)
+  %(prog)s -t 2 --cycle 30          # Run table 2 infinitely (30s pause)
+  %(prog)s -t 1 -p mytest --cycle   # With BLF prefix + infinite cycle
+  %(prog)s -t 2 --no-virtual        # Use real CAN interface
+        """
+    )
+
+    parser.add_argument('--table', '-t', type=int, choices=[1, 2], default=1,
+                       help='Table number to execute (1 or 2, default: 1)')
+    parser.add_argument('--cycle', nargs='?', type=float, const=DEFAULT_CYCLE_PAUSE, default=None,
+                       metavar='SECONDS',
+                       help=f'Run infinitely with pause between cycles (default: {DEFAULT_CYCLE_PAUSE}s)')
+    parser.add_argument('--prefix', '-p', type=str, default=None,
+                       help='BLF output file prefix (e.g., "mytest" -> mytest_table1_cycle0001_*.blf)')
+    parser.add_argument('--virtual', '-v', action='store_true', default=False,
+                       help='Use virtual CAN channel (default: False)')
+    parser.add_argument('--no-virtual', action='store_false', dest='virtual',
+                       help='Use real CAN interface (Kvaser)')
+    parser.add_argument('--channel', type=int, default=0,
+                       help='CAN channel number (default: 0)')
+    parser.add_argument('--bitrate', '-b', type=int, default=500000,
+                       help='CAN bus speed (default: 500000)')
+    parser.add_argument('--compare', action='store_true',
+                       help='Show table comparison without execution')
+
     args = parser.parse_args()
 
-    replay_740_760(use_virtual=args.virtual)
+    if args.compare:
+        print_table_comparison()
+        return
+
+    # Table selection
+    if args.table == 1:
+        table_data = TABLE_1
+        print(f"\n{COLOR_GREEN}Selected TABLE 1{COLOR_RESET}")
+    else:
+        table_data = TABLE_2
+        print(f"\n{COLOR_GREEN}Selected TABLE 2{COLOR_RESET}")
+
+    # Mode info
+    if args.cycle is not None:
+        print(f"{COLOR_CYAN}Mode: INFINITE CYCLE (pause: {args.cycle}s){COLOR_RESET}")
+    else:
+        print(f"{COLOR_CYAN}Mode: SINGLE RUN{COLOR_RESET}")
+
+    if args.prefix:
+        print(f"{COLOR_WHITE}BLF prefix: {args.prefix}{COLOR_RESET}")
+
+    # Create controller and run
+    controller = ValveController(
+        use_virtual=args.virtual,
+        channel=args.channel,
+        bitrate=args.bitrate,
+        blf_prefix=args.prefix
+    )
+
+    # Brief comparison
+    print_table_comparison()
+
+    # Run
+    controller.run_table_sequence(table_data, cycle_pause=args.cycle)
+
+
+if __name__ == "__main__":
+    main()

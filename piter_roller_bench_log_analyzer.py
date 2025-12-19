@@ -158,9 +158,9 @@ WITHGRAPH = True
 SHOW_START_AND_END_COMMAND_MARKERS = True
 
 # флаг для добавления Extended Session и Tester Present
-ADD_EXS_AND_TP = True
+ADD_EXS_AND_TP = False
 # строить график только для периода активной работы клапанов
-GRAPH_FOR_MOTOR_ONLY = True
+GRAPH_FOR_MOTOR_ONLY = False
 
 IGNORE_RESPONSES_IN_GRAPH = True
 
